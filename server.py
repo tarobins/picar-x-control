@@ -36,6 +36,21 @@ state = {
 # Safety Watchdog variables
 last_move_time = time.time()
 
+def get_safety_thresholds(current_speed):
+    # Stop distance scales from 10cm (at speed 25) to 25cm (at speed 100)
+    stop_dist = 10
+    if current_speed > 25:
+        stop_dist += (current_speed - 25) * 0.20 # 10 + 15 = 25cm
+    stop_dist = int(stop_dist)
+    
+    # Slow distance scales from 35cm (at speed 25) to 65cm (at speed 100)
+    slow_dist = 35
+    if current_speed > 25:
+        slow_dist += (current_speed - 25) * 0.40 # 35 + 30 = 65cm
+    slow_dist = int(slow_dist)
+    
+    return stop_dist, slow_dist
+
 def safety_watchdog():
     global last_move_time, state
     while True:
@@ -48,16 +63,17 @@ def safety_watchdog():
                 distance = -1
 
             if state["direction"] == "forward" and distance > 0:
-                if distance < 10:
+                stop_dist, slow_dist = get_safety_thresholds(state["speed"])
+                if distance < stop_dist:
                     print(f"Watchdog Auto-Brake: Obstacle at {distance:.1f}cm. Stopping!")
                     px.stop()
                     state["speed"] = 0
                     state["direction"] = "stop"
-                elif distance < 40:
+                elif distance < slow_dist:
                     target_speed = state["speed"]
                     min_speed = 25
                     if target_speed > min_speed:
-                        scaled = min_speed + (target_speed - min_speed) * (distance - 10) / (40 - 10)
+                        scaled = min_speed + (target_speed - min_speed) * (distance - stop_dist) / (slow_dist - stop_dist)
                         scaled = int(max(min_speed, min(target_speed, scaled)))
                         px.forward(scaled)
 
@@ -127,7 +143,9 @@ def move_car():
         except:
             distance = -1
             
-        if 0 < distance < 10:
+        stop_dist, slow_dist = get_safety_thresholds(speed)
+        
+        if 0 < distance < stop_dist:
             px.stop()
             state["speed"] = 0
             state["direction"] = "stop"
@@ -136,9 +154,9 @@ def move_car():
         last_move_time = time.time()
         state["direction"] = "forward"
         # If very close, scale speed immediately
-        if 10 <= distance < 40:
+        if stop_dist <= distance < slow_dist:
             min_speed = 25
-            speed = int(max(min_speed, min(speed, min_speed + (speed - min_speed) * (distance - 10) / (40 - 10))))
+            speed = int(max(min_speed, min(speed, min_speed + (speed - min_speed) * (distance - stop_dist) / (slow_dist - stop_dist))))
         px.forward(speed)
         
     elif action == "backward":
