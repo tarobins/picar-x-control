@@ -906,9 +906,16 @@ else:
         document.getElementById('btn-center-steer').addEventListener('click', () => steer(0));
 
         // Handle drive deck clicks
-        document.getElementById('ctrl-up').addEventListener('mousedown', () => drive('forward'));
-        document.getElementById('ctrl-down').addEventListener('mousedown', () => drive('backward'));
+        document.getElementById('ctrl-up').addEventListener('mousedown', () => {
+            activeKeys.add('w');
+            drive('forward');
+        });
+        document.getElementById('ctrl-down').addEventListener('mousedown', () => {
+            activeKeys.add('s');
+            drive('backward');
+        });
         document.getElementById('ctrl-left').addEventListener('mousedown', () => {
+            activeKeys.add('a');
             if (document.getElementById('chk-sticky-steer').checked) {
                 steer(Math.max(-30, steeringAngle - 10));
             } else {
@@ -916,46 +923,78 @@ else:
             }
         });
         document.getElementById('ctrl-right').addEventListener('mousedown', () => {
+            activeKeys.add('d');
             if (document.getElementById('chk-sticky-steer').checked) {
                 steer(Math.min(30, steeringAngle + 10));
             } else {
                 steer(30);
             }
         });
-        document.getElementById('ctrl-stop').addEventListener('click', () => drive('stop'));
+        document.getElementById('ctrl-stop').addEventListener('click', () => {
+            activeKeys.clear();
+            drive('stop');
+        });
 
         // Mouseup handlers to stop/recenter
-        document.getElementById('ctrl-up').addEventListener('mouseup', () => drive('stop'));
-        document.getElementById('ctrl-down').addEventListener('mouseup', () => drive('stop'));
+        document.getElementById('ctrl-up').addEventListener('mouseup', () => {
+            activeKeys.delete('w');
+            drive('stop');
+        });
+        document.getElementById('ctrl-down').addEventListener('mouseup', () => {
+            activeKeys.delete('s');
+            drive('stop');
+        });
         document.getElementById('ctrl-left').addEventListener('mouseup', () => {
+            activeKeys.delete('a');
             if (!document.getElementById('chk-sticky-steer').checked) steer(0);
         });
         document.getElementById('ctrl-right').addEventListener('mouseup', () => {
+            activeKeys.delete('d');
             if (!document.getElementById('chk-sticky-steer').checked) steer(0);
         });
 
         // Touch event handlers for mobile
         const controlIds = [
-            { id: 'ctrl-up', act: () => drive('forward'), end: () => drive('stop') },
-            { id: 'ctrl-down', act: () => drive('backward'), end: () => drive('stop') },
-            { id: 'ctrl-left', act: () => {
-                if (document.getElementById('chk-sticky-steer').checked) {
-                    steer(Math.max(-30, steeringAngle - 10));
-                } else {
-                    steer(-30);
-                }
-            }, end: () => {
-                if (!document.getElementById('chk-sticky-steer').checked) steer(0);
-            } },
-            { id: 'ctrl-right', act: () => {
-                if (document.getElementById('chk-sticky-steer').checked) {
-                    steer(Math.min(30, steeringAngle + 10));
-                } else {
-                    steer(30);
-                }
-            }, end: () => {
-                if (!document.getElementById('chk-sticky-steer').checked) steer(0);
-            } }
+            { 
+                id: 'ctrl-up', 
+                act: () => { activeKeys.add('w'); drive('forward'); }, 
+                end: () => { activeKeys.delete('w'); drive('stop'); } 
+            },
+            { 
+                id: 'ctrl-down', 
+                act: () => { activeKeys.add('s'); drive('backward'); }, 
+                end: () => { activeKeys.delete('s'); drive('stop'); } 
+            },
+            { 
+                id: 'ctrl-left', 
+                act: () => {
+                    activeKeys.add('a');
+                    if (document.getElementById('chk-sticky-steer').checked) {
+                        steer(Math.max(-30, steeringAngle - 10));
+                    } else {
+                        steer(-30);
+                    }
+                }, 
+                end: () => {
+                    activeKeys.delete('a');
+                    if (!document.getElementById('chk-sticky-steer').checked) steer(0);
+                } 
+            },
+            { 
+                id: 'ctrl-right', 
+                act: () => {
+                    activeKeys.add('d');
+                    if (document.getElementById('chk-sticky-steer').checked) {
+                        steer(Math.min(30, steeringAngle + 10));
+                    } else {
+                        steer(30);
+                    }
+                }, 
+                end: () => {
+                    activeKeys.delete('d');
+                    if (!document.getElementById('chk-sticky-steer').checked) steer(0);
+                } 
+            }
         ];
 
         controlIds.forEach(({id, act, end}) => {
