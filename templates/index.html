@@ -1,0 +1,1317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PiCar-X Command Center</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #080a0f;
+            --bg-surface: rgba(18, 22, 33, 0.7);
+            --border-glow: rgba(0, 242, 254, 0.15);
+            --accent-primary: #00f2fe;
+            --accent-secondary: #4facfe;
+            --accent-purple: #b927fc;
+            --accent-success: #00e676;
+            --accent-warning: #ff9100;
+            --accent-danger: #ff5252;
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+            --panel-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            font-family: 'Outfit', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(at 10% 20%, rgba(79, 172, 254, 0.05) 0px, transparent 50%),
+                radial-gradient(at 90% 80%, rgba(185, 39, 252, 0.05) 0px, transparent 50%);
+        }
+
+        header {
+            background: rgba(10, 14, 23, 0.85);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 1.2rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+        }
+
+        .logo-glow {
+            width: 14px;
+            height: 14px;
+            background: var(--accent-primary);
+            border-radius: 50%;
+            box-shadow: 0 0 12px var(--accent-primary);
+            animation: pulse 2s infinite alternate;
+        }
+
+        h1 {
+            font-size: 1.6rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .status-badge {
+            background: rgba(0, 230, 118, 0.1);
+            border: 1px solid var(--accent-success);
+            color: var(--accent-success);
+            padding: 0.4rem 0.8rem;
+            border-radius: 50px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-success);
+            border-radius: 50%;
+        }
+
+        .container {
+            flex: 1;
+            max-width: 1400px;
+            width: 100%;
+            margin: 0 auto;
+            padding: 2rem;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+        }
+
+        @media (max-width: 1200px) {
+            .container {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Glass Card Base */
+        .card {
+            background: var(--bg-surface);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--border-glow);
+            border-radius: 20px;
+            padding: 1.5rem;
+            box-shadow: var(--panel-shadow);
+            display: flex;
+            flex-direction: column;
+            gap: 1.2rem;
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: rgba(0, 242, 254, 0.3);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 0.8rem;
+        }
+
+        .card-title {
+            font-size: 1.15rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        /* Video Feed Styles */
+        .video-wrapper {
+            position: relative;
+            background: #000;
+            border-radius: 12px;
+            aspect-ratio: 4/3;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .video-feed {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .video-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+            color: var(--text-muted);
+        }
+
+        .video-placeholder svg {
+            width: 48px;
+            height: 48px;
+            stroke: var(--text-muted);
+        }
+
+        /* Controls Panel */
+        .drive-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.8rem;
+            width: 180px;
+            margin: 0 auto;
+        }
+
+        .btn-control {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-main);
+            border-radius: 12px;
+            aspect-ratio: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-control:hover {
+            background: rgba(0, 242, 254, 0.1);
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+            box-shadow: 0 0 10px rgba(0, 242, 254, 0.2);
+        }
+
+        .btn-control:active, .btn-control.active {
+            background: var(--accent-primary);
+            border-color: var(--accent-primary);
+            color: #000;
+        }
+
+        .btn-control.stop-btn {
+            background: rgba(255, 82, 82, 0.1);
+            border-color: var(--accent-danger);
+            color: var(--accent-danger);
+        }
+
+        .btn-control.stop-btn:hover {
+            background: var(--accent-danger);
+            color: #fff;
+            box-shadow: 0 0 12px rgba(255, 82, 82, 0.3);
+        }
+
+        /* Slider Styles */
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .slider-label span.val {
+            color: var(--accent-primary);
+            font-weight: 600;
+        }
+
+        .range-slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.08);
+            outline: none;
+        }
+
+        .range-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--accent-primary);
+            cursor: pointer;
+            box-shadow: 0 0 8px var(--accent-primary);
+            transition: transform 0.1s ease;
+        }
+
+        .range-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        /* Gimbal Touch Area */
+        .gimbal-area {
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            aspect-ratio: 1.5;
+            position: relative;
+            cursor: crosshair;
+            overflow: hidden;
+        }
+
+        .gimbal-crosshair-h {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 50%;
+            height: 1px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .gimbal-crosshair-v {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 50%;
+            width: 1px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .gimbal-target {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--accent-purple);
+            border: 2px solid #fff;
+            transform: translate(-50%, -50%);
+            left: 50%;
+            top: 50%;
+            box-shadow: 0 0 10px var(--accent-purple);
+            pointer-events: none;
+            transition: left 0.1s ease, top 0.1s ease;
+        }
+
+        /* Telemetry Elements */
+        .telemetry-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .telemetry-box {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            border-radius: 12px;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            text-align: center;
+        }
+
+        .telemetry-val {
+            font-size: 1.8rem;
+            font-weight: 800;
+        }
+
+        /* Grayscale Display */
+        .grayscale-row {
+            display: flex;
+            gap: 1.2rem;
+            margin-top: 0.4rem;
+        }
+
+        .grayscale-sensor {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .sensor-light {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            background: #1e293b;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: background-color 0.15s ease;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+        }
+
+        /* Terminal Console */
+        .console-editor {
+            font-family: 'Fira Code', monospace;
+            background: #0d0e12;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            padding: 0.8rem;
+            color: #5ff5b3;
+            min-height: 120px;
+            resize: vertical;
+            outline: none;
+            width: 100%;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        .console-term {
+            background: #050608;
+            border-radius: 10px;
+            padding: 0.8rem;
+            height: 150px;
+            overflow-y: auto;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.8rem;
+            color: #e2e8f0;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .term-line {
+            margin-bottom: 0.3rem;
+            white-space: pre-wrap;
+        }
+
+        .term-err {
+            color: var(--accent-danger);
+        }
+
+        .term-out {
+            color: #38bdf8;
+        }
+
+        .select-preset {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: var(--text-main);
+            padding: 0.5rem;
+            border-radius: 8px;
+            outline: none;
+            font-size: 0.85rem;
+            width: 100%;
+        }
+
+        .select-preset option {
+            background: #121621;
+            color: var(--text-main);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            color: #000;
+            border: none;
+            border-radius: 10px;
+            padding: 0.6rem 1.2rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary:hover {
+            box-shadow: 0 0 15px rgba(0, 242, 254, 0.4);
+            transform: translateY(-1px);
+        }
+
+        /* Diagnostics Bars */
+        .diag-row {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+
+        .diag-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .diag-bar-bg {
+            background: rgba(255,255,255,0.06);
+            height: 8px;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .diag-bar-fill {
+            height: 100%;
+            border-radius: 10px;
+            background: var(--accent-primary);
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+
+        .diag-bar-fill.purple {
+            background: var(--accent-purple);
+        }
+
+        .diag-bar-fill.orange {
+            background: var(--accent-warning);
+        }
+
+        /* Keyboard Help */
+        .kbd-guide {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            border-radius: 10px;
+            padding: 0.6rem;
+            line-height: 1.5;
+        }
+
+        .kbd-key {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+            padding: 0.1rem 0.3rem;
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: var(--text-main);
+        }
+
+        @keyframes pulse {
+            from { box-shadow: 0 0 4px var(--accent-primary); }
+            to { box-shadow: 0 0 16px var(--accent-primary); }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-container">
+            <div class="logo-glow"></div>
+            <h1>PiCar-X Command Center</h1>
+        </div>
+        <div class="status-badge" id="conn-badge">
+            <div class="status-dot"></div>
+            <span>Connected</span>
+        </div>
+    </header>
+
+    <div class="container">
+        
+        <!-- COLUMN 1: Camera & Gimbal -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-video"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+                    Vision Stream
+                </div>
+                <button class="btn-primary" id="toggle-camera-btn" style="padding: 0.3rem 0.6rem; font-size: 0.75rem;">Disable Camera</button>
+            </div>
+            
+            <div class="video-wrapper">
+                <img id="mjpg-stream" class="video-feed" src="" alt="MJPEG Video Stream">
+                <div id="mjpg-placeholder" class="video-placeholder" style="display: none;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                    <span>Camera Stream Offline</span>
+                </div>
+            </div>
+
+            <div class="card-header" style="margin-top: 0.5rem;">
+                <div class="card-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                    Camera Gimbal
+                </div>
+            </div>
+
+            <div class="control-group">
+                <div class="slider-label">
+                    <span>Click & Drag to Aim Camera</span>
+                    <span>Pan: <span id="pan-val" class="val">0</span>° | Tilt: <span id="tilt-val" class="val">0</span>°</span>
+                </div>
+                <div class="gimbal-area" id="gimbal-pad">
+                    <div class="gimbal-crosshair-h"></div>
+                    <div class="gimbal-crosshair-v"></div>
+                    <div class="gimbal-target" id="gimbal-marker"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- COLUMN 2: Driving Controls & Telemetry -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 17V7l7 5z"/></svg>
+                    Drive Deck
+                </div>
+            </div>
+
+            <div class="drive-grid">
+                <div></div>
+                <button class="btn-control" id="ctrl-up" title="Forward (W)">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                </button>
+                <div></div>
+
+                <button class="btn-control" id="ctrl-left" title="Steer Left (A)">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                </button>
+                <button class="btn-control stop-btn" id="ctrl-stop" title="Stop (Space)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+                </button>
+                <button class="btn-control" id="ctrl-right" title="Steer Right (D)">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </button>
+
+                <div></div>
+                <button class="btn-control" id="ctrl-down" title="Backward (S)">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </button>
+                <div></div>
+            </div>
+
+            <div class="control-group">
+                <div class="slider-label">
+                    <span>Speed Throttle</span>
+                    <span><span id="speed-val" class="val">50</span>%</span>
+                </div>
+                <input type="range" class="range-slider" id="speed-slider" min="10" max="100" value="50">
+            </div>
+
+            <div class="control-group">
+                <div class="slider-label">
+                    <span>Steering Angle</span>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <button class="btn-primary" id="btn-center-steer" style="padding: 0.2rem 0.5rem; font-size: 0.7rem; border-radius: 4px; font-weight: 600;">Center</button>
+                        <span><span id="steer-val" class="val">0</span>°</span>
+                    </div>
+                </div>
+                <input type="range" class="range-slider" id="steer-slider" min="-30" max="30" value="0">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">
+                    <label style="display: flex; align-items: center; gap: 0.3rem; cursor: pointer; user-select: none;">
+                        <input type="checkbox" id="chk-sticky-steer" checked style="accent-color: var(--accent-primary);"> Sticky Steering (Incremental)
+                    </label>
+                    <span>Press <kbd class="kbd-key" style="font-size: 0.65rem;">C</kbd> to Center</span>
+                </div>
+            </div>
+
+            <div class="kbd-guide">
+                <strong>Controls:</strong> Drive with <kbd class="kbd-key">W</kbd> <kbd class="kbd-key">A</kbd> <kbd class="kbd-key">S</kbd> <kbd class="kbd-key">D</kbd> or deck. <kbd class="kbd-key">Space</kbd> stops. Steer wheels with <kbd class="kbd-key">A</kbd> / <kbd class="kbd-key">D</kbd> (sticky/steps of 10° by default). Center with <kbd class="kbd-key">C</kbd>. Pan camera with <kbd class="kbd-key">▲</kbd> <kbd class="kbd-key">▼</kbd> <kbd class="kbd-key">◀</kbd> <kbd class="kbd-key">▶</kbd> arrows.
+            </div>
+
+            <!-- Telemetry nested -->
+            <div class="telemetry-grid">
+                <div class="telemetry-box" id="radar-box" style="justify-content: space-between; min-height: 140px;">
+                    <span style="font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.3rem;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                        Obstacle Range
+                    </span>
+                    <div>
+                        <span class="telemetry-val" id="radar-val">--</span>
+                        <span style="font-size: 0.75rem; color: var(--text-muted)">cm</span>
+                    </div>
+                    <div style="width: 100%; padding: 0 0.5rem;">
+                        <div style="background: rgba(255,255,255,0.06); height: 6px; border-radius: 3px; overflow: hidden; width: 100%;">
+                            <div id="radar-bar-fill" style="height: 100%; border-radius: 3px; background: var(--accent-success); width: 0%; transition: width 0.15s ease, background-color 0.15s ease;"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="telemetry-box" style="justify-content: space-between; min-height: 140px;">
+                    <span style="font-size: 0.8rem; color: var(--text-muted)">IR Grayscale</span>
+                    <div class="grayscale-row">
+                        <div class="grayscale-sensor">
+                            <div class="sensor-light" id="ir-0"></div>
+                            <span style="font-weight: 600; font-family: 'Fira Code', monospace; font-size: 0.8rem; margin-top: 0.2rem;" id="ir-val-0">--</span>
+                            <span style="font-size: 0.65rem;">L</span>
+                        </div>
+                        <div class="grayscale-sensor">
+                            <div class="sensor-light" id="ir-1"></div>
+                            <span style="font-weight: 600; font-family: 'Fira Code', monospace; font-size: 0.8rem; margin-top: 0.2rem;" id="ir-val-1">--</span>
+                            <span style="font-size: 0.65rem;">C</span>
+                        </div>
+                        <div class="grayscale-sensor">
+                            <div class="sensor-light" id="ir-2"></div>
+                            <span style="font-weight: 600; font-family: 'Fira Code', monospace; font-size: 0.8rem; margin-top: 0.2rem;" id="ir-val-2">--</span>
+                            <span style="font-size: 0.65rem;">R</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- COLUMN 3: Developer Engine & Diagnostics -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-terminal"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+                    Developer Engine
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label class="slider-label" style="margin-bottom: 0.2rem;">Code Recipes</label>
+                <select class="select-preset" id="code-presets">
+                    <option value="">-- Choose a Preset Script --</option>
+                    <option value="reset">Recenter Robot & Gimbal</option>
+                    <option value="wiggle">Camera Sweep Dance</option>
+                    <option value="drive_square">Run S-Curve Route</option>
+                    <option value="horn">Honk Horn Sound</option>
+                    <option value="avoidance">Quick Obstacle Check Loop</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label class="slider-label">Python Script (exec runs persistently)</label>
+                <textarea class="console-editor" id="code-editor" spellcheck="false"># Write python script here
+px.set_dir_servo_angle(0)
+px.forward(50)
+time.sleep(0.5)
+px.stop()
+</textarea>
+            </div>
+
+            <button class="btn-primary" id="btn-run-code">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                Execute Script
+            </button>
+
+            <div class="console-term" id="console-output">
+                <div class="term-line" style="color: var(--text-muted)">// Output logs will display here...</div>
+            </div>
+
+            <div class="card-header" style="padding-top: 0.8rem; margin-top: 0.4rem;">
+                <div class="card-title" style="font-size: 1rem;">System Diagnostics</div>
+            </div>
+
+            <div class="diag-row">
+                <div class="diag-label">
+                    <span>CPU Temperature</span>
+                    <span id="diag-temp">0°C</span>
+                </div>
+                <div class="diag-bar-bg">
+                    <div class="diag-bar-fill orange" id="bar-temp"></div>
+                </div>
+            </div>
+
+            <div class="diag-row">
+                <div class="diag-label">
+                    <span>CPU Utilization</span>
+                    <span id="diag-cpu">0%</span>
+                </div>
+                <div class="diag-bar-bg">
+                    <div class="diag-bar-fill" id="bar-cpu"></div>
+                </div>
+            </div>
+
+            <div class="diag-row">
+                <div class="diag-label">
+                    <span>Memory Usage</span>
+                    <span id="diag-mem">0%</span>
+                </div>
+                <div class="diag-bar-bg">
+                    <div class="diag-bar-fill purple" id="bar-mem"></div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Configuration
+        const hostIp = window.location.hostname;
+        const videoFeedUrl = `http://${hostIp}:9000/mjpg`;
+        
+        // State
+        let speed = 50;
+        let steeringAngle = 0;
+        let panAngle = 0;
+        let tiltAngle = 0;
+        let activeKeys = new Set();
+        let cameraActive = true;
+        let lastMoveRequest = 0;
+
+        // Elements
+        const imgStream = document.getElementById('mjpg-stream');
+        const imgPlaceholder = document.getElementById('mjpg-placeholder');
+        const toggleCameraBtn = document.getElementById('toggle-camera-btn');
+        const speedSlider = document.getElementById('speed-slider');
+        const speedVal = document.getElementById('speed-val');
+        const steerSlider = document.getElementById('steer-slider');
+        const steerVal = document.getElementById('steer-val');
+        const panVal = document.getElementById('pan-val');
+        const tiltVal = document.getElementById('tilt-val');
+        const radarBox = document.getElementById('radar-box');
+        const radarVal = document.getElementById('radar-val');
+        const codeEditor = document.getElementById('code-editor');
+        const btnRunCode = document.getElementById('btn-run-code');
+        const consoleOutput = document.getElementById('console-output');
+        const codePresets = document.getElementById('code-presets');
+        const connBadge = document.getElementById('conn-badge');
+        const gimbalPad = document.getElementById('gimbal-pad');
+        const gimbalMarker = document.getElementById('gimbal-marker');
+
+        // Preset scripts
+        const presets = {
+            reset: `# Recenter everything
+px.reset()
+state["speed"] = 0
+state["steering_angle"] = 0
+state["pan_angle"] = 0
+state["tilt_angle"] = 0
+print("Robot central calibration completed.")`,
+
+            wiggle: `# Sweep the camera head back and forth
+print("Starting camera sweep dance...")
+for p in [0, 45, 0, -45, 0]:
+    px.set_cam_pan_angle(p)
+    time.sleep(0.3)
+for t in [0, 30, 0, -20, 0]:
+    px.set_cam_tilt_angle(t)
+    time.sleep(0.3)
+print("Camera sweep finished.")`,
+
+            drive_square: `# Run an S-curve route
+print("Executing S-curve sequence...")
+px.set_dir_servo_angle(-25) # Steer left
+px.forward(40)
+time.sleep(1.0)
+px.set_dir_servo_angle(25)  # Steer right
+px.forward(40)
+time.sleep(1.0)
+px.set_dir_servo_angle(0)   # Straighten out
+px.forward(45)
+time.sleep(0.8)
+px.stop()
+print("S-curve route complete.")`,
+
+            horn: `# Honk the car horn
+try:
+    from picarx.music import Music
+    music = Music()
+    # Need sounds path relative or absolute
+    import os
+    user = os.popen('echo \${SUDO_USER:-$LOGNAME}').readline().strip()
+    user_home = os.path.expanduser(f"~{user}")
+    sound_path = f"{user_home}/picar-x/sounds/car-double-horn.wav"
+    print("Playing sound...")
+    music.sound_play_threading(sound_path)
+except Exception as e:
+    print(f"Horn failed: {e}")`,
+
+            avoidance: `# Scan front obstacle and make decision
+dist = px.get_distance()
+print(f"Current frontal obstacle distance: {dist:.1f} cm")
+if dist < 25:
+    print("Obstacle detected closer than 25cm! Reversing steer.")
+    px.set_dir_servo_angle(-30)
+    px.backward(40)
+    time.sleep(0.8)
+    px.stop()
+else:
+    print("Path is clear. Driving forward 0.5s.")
+    px.set_dir_servo_angle(0)
+    px.forward(40)
+    time.sleep(0.5)
+    px.stop()`
+        };
+
+        // Initialize Camera Stream URL
+        function initCamera() {
+            if (cameraActive) {
+                imgStream.src = videoFeedUrl;
+                imgStream.style.display = 'block';
+                imgPlaceholder.style.display = 'none';
+                toggleCameraBtn.textContent = 'Disable Camera';
+                toggleCameraBtn.classList.remove('stop-btn');
+            } else {
+                imgStream.removeAttribute('src');
+                imgStream.style.display = 'none';
+                imgPlaceholder.style.display = 'flex';
+                toggleCameraBtn.textContent = 'Enable Camera';
+                toggleCameraBtn.classList.add('stop-btn');
+            }
+        }
+
+        // Toggle Camera
+        toggleCameraBtn.addEventListener('click', () => {
+            const nextState = !cameraActive;
+            fetch('/api/camera_switch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ active: nextState })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    cameraActive = data.camera_active;
+                    initCamera();
+                }
+            })
+            .catch(err => console.error("Error switching camera:", err));
+        });
+
+        // Set speed from slider
+        speedSlider.addEventListener('input', (e) => {
+            speed = parseInt(e.target.value);
+            speedVal.textContent = speed;
+        });
+
+        // Set steer from slider
+        steerSlider.addEventListener('input', (e) => {
+            steeringAngle = parseInt(e.target.value);
+            steerVal.textContent = steeringAngle;
+            sendMoveCommand('steer');
+        });
+
+        // Steer release (snap back to center on double click)
+        steerSlider.addEventListener('dblclick', () => {
+            steerSlider.value = 0;
+            steeringAngle = 0;
+            steerVal.textContent = 0;
+            sendMoveCommand('steer');
+        });
+
+        document.getElementById('btn-center-steer').addEventListener('click', () => steer(0));
+
+        // Handle drive deck clicks
+        document.getElementById('ctrl-up').addEventListener('mousedown', () => drive('forward'));
+        document.getElementById('ctrl-down').addEventListener('mousedown', () => drive('backward'));
+        document.getElementById('ctrl-left').addEventListener('mousedown', () => {
+            if (document.getElementById('chk-sticky-steer').checked) {
+                steer(Math.max(-30, steeringAngle - 10));
+            } else {
+                steer(-30);
+            }
+        });
+        document.getElementById('ctrl-right').addEventListener('mousedown', () => {
+            if (document.getElementById('chk-sticky-steer').checked) {
+                steer(Math.min(30, steeringAngle + 10));
+            } else {
+                steer(30);
+            }
+        });
+        document.getElementById('ctrl-stop').addEventListener('click', () => drive('stop'));
+
+        // Mouseup handlers to stop/recenter
+        document.getElementById('ctrl-up').addEventListener('mouseup', () => drive('stop'));
+        document.getElementById('ctrl-down').addEventListener('mouseup', () => drive('stop'));
+        document.getElementById('ctrl-left').addEventListener('mouseup', () => {
+            if (!document.getElementById('chk-sticky-steer').checked) steer(0);
+        });
+        document.getElementById('ctrl-right').addEventListener('mouseup', () => {
+            if (!document.getElementById('chk-sticky-steer').checked) steer(0);
+        });
+
+        // Touch event handlers for mobile
+        const controlIds = [
+            { id: 'ctrl-up', act: () => drive('forward'), end: () => drive('stop') },
+            { id: 'ctrl-down', act: () => drive('backward'), end: () => drive('stop') },
+            { id: 'ctrl-left', act: () => {
+                if (document.getElementById('chk-sticky-steer').checked) {
+                    steer(Math.max(-30, steeringAngle - 10));
+                } else {
+                    steer(-30);
+                }
+            }, end: () => {
+                if (!document.getElementById('chk-sticky-steer').checked) steer(0);
+            } },
+            { id: 'ctrl-right', act: () => {
+                if (document.getElementById('chk-sticky-steer').checked) {
+                    steer(Math.min(30, steeringAngle + 10));
+                } else {
+                    steer(30);
+                }
+            }, end: () => {
+                if (!document.getElementById('chk-sticky-steer').checked) steer(0);
+            } }
+        ];
+
+        controlIds.forEach(({id, act, end}) => {
+            const el = document.getElementById(id);
+            el.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                act();
+            });
+            el.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                end();
+            });
+        });
+
+        function drive(action) {
+            fetch('/api/move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: action,
+                    speed: speed,
+                    steering_angle: steeringAngle
+                })
+            })
+            .catch(err => console.error("Move error:", err));
+        }
+
+        function steer(angle) {
+            steeringAngle = angle;
+            steerSlider.value = angle;
+            steerVal.textContent = angle;
+            fetch('/api/move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'steer',
+                    speed: speed,
+                    steering_angle: steeringAngle
+                })
+            })
+            .catch(err => console.error("Steer error:", err));
+        }
+
+        // Throttle API requests to max 10Hz
+        function sendMoveCommand(action) {
+            const now = Date.now();
+            if (now - lastMoveRequest < 100) return;
+            lastMoveRequest = now;
+            drive(action);
+        }
+
+        // Keyboard Event Handlers
+        window.addEventListener('keydown', (e) => {
+            if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') {
+                return; // Don't hijack keyboard inputs if typing in editor
+            }
+            
+            const key = e.key.toLowerCase();
+            if (activeKeys.has(key)) return; // prevent key-repeat fires
+            activeKeys.add(key);
+
+            let changed = false;
+            
+            if (key === 'w') {
+                document.getElementById('ctrl-up').classList.add('active');
+                drive('forward');
+            } else if (key === 's') {
+                document.getElementById('ctrl-down').classList.add('active');
+                drive('backward');
+            } else if (key === 'a') {
+                document.getElementById('ctrl-left').classList.add('active');
+                if (document.getElementById('chk-sticky-steer').checked) {
+                    steer(Math.max(-30, steeringAngle - 10));
+                } else {
+                    steer(-30);
+                }
+            } else if (key === 'd') {
+                document.getElementById('ctrl-right').classList.add('active');
+                if (document.getElementById('chk-sticky-steer').checked) {
+                    steer(Math.min(30, steeringAngle + 10));
+                } else {
+                    steer(30);
+                }
+            } else if (key === 'c') {
+                steer(0);
+            } else if (key === ' ') {
+                document.getElementById('ctrl-stop').classList.add('active');
+                drive('stop');
+            } else if (key === 'arrowup') {
+                adjustCamera(0, 5);
+            } else if (key === 'arrowdown') {
+                adjustCamera(0, -5);
+            } else if (key === 'arrowleft') {
+                adjustCamera(-5, 0);
+            } else if (key === 'arrowright') {
+                adjustCamera(5, 0);
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            activeKeys.delete(key);
+
+            if (key === 'w' || key === 's') {
+                document.getElementById('ctrl-up').classList.remove('active');
+                document.getElementById('ctrl-down').classList.remove('active');
+                drive('stop');
+            } else if (key === 'a' || key === 'd') {
+                document.getElementById('ctrl-left').classList.remove('active');
+                document.getElementById('ctrl-right').classList.remove('active');
+                if (!document.getElementById('chk-sticky-steer').checked) {
+                    steer(0);
+                }
+            } else if (key === ' ') {
+                document.getElementById('ctrl-stop').classList.remove('active');
+            }
+        });
+
+        // Window blur listener to prevent runaway robot if tab loses focus
+        window.addEventListener('blur', () => {
+            activeKeys.clear();
+            document.querySelectorAll('.btn-control').forEach(el => el.classList.remove('active'));
+            drive('stop');
+        });
+
+        // Periodic safety heartbeat (resets server watchdog timer if key is held down)
+        setInterval(() => {
+            if (activeKeys.has('w')) {
+                drive('forward');
+            } else if (activeKeys.has('s')) {
+                drive('backward');
+            }
+        }, 250);
+
+        // Gimbal Aiming Logic
+        gimbalPad.addEventListener('click', handleGimbalInput);
+        
+        let isGimbalDragging = false;
+        gimbalPad.addEventListener('mousedown', () => isGimbalDragging = true);
+        window.addEventListener('mouseup', () => isGimbalDragging = false);
+        gimbalPad.addEventListener('mousemove', (e) => {
+            if (isGimbalDragging) handleGimbalInput(e);
+        });
+
+        // Mobile touch gimbal
+        gimbalPad.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            handleGimbalInput(e.touches[0]);
+        });
+
+        function handleGimbalInput(e) {
+            const rect = gimbalPad.getBoundingClientRect();
+            const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+            const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+
+            // Map x (0 to width) to Pan (-90 to 90)
+            const pan = Math.round((x / rect.width) * 180 - 90);
+            // Map y (0 to height) to Tilt (65 to -35) - invert Y axis since up is positive angle
+            const tilt = Math.round(65 - (y / rect.height) * 100);
+
+            setGimbalAngles(pan, tilt);
+        }
+
+        function setGimbalAngles(pan, tilt) {
+            panAngle = pan;
+            tiltAngle = tilt;
+            panVal.textContent = pan;
+            tiltVal.textContent = tilt;
+
+            // Move the GUI dot
+            // Map Pan (-90 to 90) to percent (0 to 100)
+            const xPct = ((pan + 90) / 180) * 100;
+            // Map Tilt (-35 to 65) to percent (100 to 0)
+            const yPct = ((65 - tilt) / 100) * 100;
+
+            gimbalMarker.style.left = `${xPct}%`;
+            gimbalMarker.style.top = `${yPct}%`;
+
+            // Call API
+            fetch('/api/camera', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pan: pan, tilt: tilt })
+            })
+            .catch(err => console.error("Camera error:", err));
+        }
+
+        function adjustCamera(panDelta, tiltDelta) {
+            const pan = Math.max(-90, Math.min(90, panAngle + panDelta));
+            const tilt = Math.max(-35, Math.min(65, tiltAngle + tiltDelta));
+            setGimbalAngles(pan, tilt);
+        }
+
+        // Script Executions
+        btnRunCode.addEventListener('click', () => {
+            const code = codeEditor.value;
+            btnRunCode.disabled = true;
+            btnRunCode.textContent = "Executing...";
+            
+            appendTerminal(">> Executing Python script on robot...", "term-out");
+
+            fetch('/api/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: code })
+            })
+            .then(res => res.json())
+            .then(data => {
+                btnRunCode.disabled = false;
+                btnRunCode.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg> Execute Script`;
+                
+                if (data.status === 'success') {
+                    if (data.output) {
+                        appendTerminal(data.output);
+                    } else {
+                        appendTerminal("// Done (no stdout value).", "term-out");
+                    }
+                } else {
+                    appendTerminal(data.output, "term-err");
+                }
+            })
+            .catch(err => {
+                btnRunCode.disabled = false;
+                btnRunCode.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg> Execute Script`;
+                appendTerminal("HTTP connection error to script server.", "term-err");
+                console.error(err);
+            });
+        });
+
+        codePresets.addEventListener('change', (e) => {
+            const val = e.target.value;
+            if (val && presets[val]) {
+                codeEditor.value = presets[val];
+            }
+        });
+
+        function appendTerminal(text, className = '') {
+            const line = document.createElement('div');
+            line.className = `term-line ${className}`;
+            line.textContent = text;
+            consoleOutput.appendChild(line);
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        }
+
+        // Telemetry & Diagnostics Polling
+        function pollTelemetry() {
+            fetch('/api/telemetry')
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    const tel = data.telemetry;
+                    
+                    // Connection Status
+                    connBadge.querySelector('span').textContent = "Connected";
+                    connBadge.style.color = "var(--accent-success)";
+                    connBadge.style.borderColor = "var(--accent-success)";
+                    connBadge.querySelector('.status-dot').style.background = "var(--accent-success)";
+
+                    // Obstacle distance
+                    if (tel.distance >= 0) {
+                        radarVal.textContent = tel.distance;
+                        const distPct = Math.min(100, Math.max(0, (tel.distance / 100) * 100));
+                        const barFill = document.getElementById('radar-bar-fill');
+                        barFill.style.width = `${distPct}%`;
+
+                        if (tel.distance < 20) {
+                            radarBox.style.background = "rgba(255, 82, 82, 0.15)";
+                            radarBox.style.borderColor = "var(--accent-danger)";
+                            radarVal.style.color = "var(--accent-danger)";
+                            barFill.style.backgroundColor = "var(--accent-danger)";
+                        } else if (tel.distance < 40) {
+                            radarBox.style.background = "rgba(255, 145, 0, 0.1)";
+                            radarBox.style.borderColor = "var(--accent-warning)";
+                            radarVal.style.color = "var(--accent-warning)";
+                            barFill.style.backgroundColor = "var(--accent-warning)";
+                        } else {
+                            radarBox.style.background = "rgba(255, 255, 255, 0.02)";
+                            radarBox.style.borderColor = "rgba(255, 255, 255, 0.04)";
+                            radarVal.style.color = "var(--text-main)";
+                            barFill.style.backgroundColor = "var(--accent-success)";
+                        }
+                    } else {
+                        radarVal.textContent = "--";
+                        document.getElementById('radar-bar-fill').style.width = "0%";
+                    }
+
+                    // Grayscale values
+                    const gs = tel.grayscale || [0, 0, 0];
+                    for (let i = 0; i < 3; i++) {
+                        const cell = document.getElementById(`ir-${i}`);
+                        const valLabel = document.getElementById(`ir-val-${i}`);
+                        const value = gs[i];
+                        
+                        valLabel.textContent = value;
+                        
+                        const norm = Math.min(100, Math.max(0, (value / 1200) * 100));
+                        cell.style.backgroundColor = `rgba(0, 242, 254, ${0.1 + (norm / 100) * 0.9})`;
+                        if (value > 900) {
+                            cell.style.boxShadow = "0 0 10px rgba(0, 242, 254, 0.6)";
+                            valLabel.style.color = "var(--accent-primary)";
+                        } else {
+                            cell.style.boxShadow = "none";
+                            valLabel.style.color = "var(--text-main)";
+                        }
+                        cell.title = `ADC: ${value}`;
+                    }
+
+                    // Diagnostics
+                    document.getElementById('diag-temp').textContent = `${tel.cpu_temp}°C`;
+                    document.getElementById('bar-temp').style.width = `${Math.min(100, (tel.cpu_temp / 90) * 100)}%`;
+                    
+                    document.getElementById('diag-cpu').textContent = `${tel.cpu_usage}%`;
+                    document.getElementById('bar-cpu').style.width = `${tel.cpu_usage}%`;
+
+                    document.getElementById('diag-mem').textContent = `${tel.memory_usage}%`;
+                    document.getElementById('bar-mem').style.width = `${tel.memory_usage}%`;
+                }
+            })
+            .catch(err => {
+                console.error("Telemetry error:", err);
+                connBadge.querySelector('span').textContent = "Offline";
+                connBadge.style.color = "var(--accent-danger)";
+                connBadge.style.borderColor = "var(--accent-danger)";
+                connBadge.querySelector('.status-dot').style.background = "var(--accent-danger)";
+            });
+        }
+
+        // Start polling loop
+        setInterval(pollTelemetry, 350);
+
+        // Fetch initial status
+        function fetchStatus() {
+            fetch('/api/status')
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    const st = data.state;
+                    speed = st.speed || 50;
+                    speedSlider.value = speed;
+                    speedVal.textContent = speed;
+                    
+                    steeringAngle = st.steering_angle || 0;
+                    steerSlider.value = steeringAngle;
+                    steerVal.textContent = steeringAngle;
+                    
+                    cameraActive = st.camera_active;
+                    
+                    setGimbalAngles(st.pan_angle || 0, st.tilt_angle || 0);
+                    initCamera();
+                }
+            })
+            .catch(err => console.error("Initial status fetch error:", err));
+        }
+
+        // Initialize Page
+        fetchStatus();
+    </script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+picar-x-lib/
+__pycache__/
+*.pyc
+.DS_Store
