@@ -34,34 +34,67 @@ The root of the Git repository contains ONLY our custom command center code, whi
 
 ## 4. How to Set Up & Run the Project
 
-### On the Robot (Device Deployment)
-The project code is synchronized to the robot at `~/picar-x/` (`/home/tarobins/picar-x/`).
+For the most efficient and robust startup, a management script `start_picar.sh` is provided in the repository root. This script automates code deployment, remote server lifecycle management, and local SSH tunneling.
+
+### Using the Management Script (`start_picar.sh`)
+
+1. **Start/Run (Recommended)**:
+   This command checks if the server is already running and the tunnel is open. If so, it exits instantly. Otherwise, it syncs the code, restarts the remote server, establishes the SSH tunnel, and verifies the connection (polling for up to 35 seconds to allow the camera to initialize).
+   ```bash
+   ./start_picar.sh start
+   # or simply
+   ./start_picar.sh
+   ```
+   *To skip code deployment and only start/verify services, use:*
+   ```bash
+   ./start_picar.sh start --skip-sync
+   ```
+
+2. **Restart**:
+   Forces a clean deployment and restart of all services (remote server and local tunnel).
+   ```bash
+   ./start_picar.sh restart
+   ```
+
+3. **Status Check**:
+   Checks the status of the local SSH tunnel and the remote server process.
+   ```bash
+   ./start_picar.sh status
+   ```
+
+4. **Stop**:
+   Gracefully stops the local SSH tunnel and the remote server.
+   ```bash
+   ./start_picar.sh stop
+   ```
+
+5. **Manual Code Sync**:
+   Syncs the local workspace to the robot without restarting services.
+   ```bash
+   ./start_picar.sh sync
+   ```
+
+### Manual Setup (Reference)
+
+If you need to perform the steps manually:
 
 1. **Deploying changes**: Run `rsync` from the local workspace:
    ```bash
    rsync -avz --no-perms --no-owner --no-group --exclude='.lgd-nfy0' --exclude='build' --exclude='picar_x.egg-info' --exclude='.git' /path/to/local/workspace/ robot:~/picar-x/
    ```
-2. **Starting the server**: Run standard Python without sudo (the `picarx` library handles GPIO privileges internally):
-   ```bash
-   ssh robot "python3 ~/picar-x/server.py"
-   ```
-3. **Restarting the server**: Flask caches templates in memory because `debug=False` is set. If template or python code changes, you must kill the old process first:
+2. **Starting/Restarting the server**:
+   On the robot, ensure any existing server is stopped, wait a moment for the camera device to be freed by the kernel, and start the new server:
    ```bash
    ssh robot "pkill -f server.py"
+   sleep 1
    ssh robot "python3 ~/picar-x/server.py"
    ```
-
-### On the Development Machine (Antigravity Environment)
-Since the agent container/VM network doesn't map port `5000` or `9000` directly to the robot's local subnet, you **must set up SSH port forwarding**:
-
-1. **Open the tunnel** in the background:
+3. **Opening the SSH tunnel**:
+   On the development machine, forward ports 5000 and 9000:
    ```bash
-   ssh -L 5000:localhost:5000 -L 9000:localhost:9000 -f -N robot
+   ssh -L 127.0.0.1:5000:localhost:5000 -L 127.0.0.1:9000:localhost:9000 -f -N robot
    ```
-2. **Test connection**:
-   - Status API check: `curl http://localhost:5000/api/status`
-   - Client check: `python3 picar_client.py` (performs connection, telemetry query, and camera wiggle test)
-   - Browser check: Open **[http://localhost:5000](http://localhost:5000)** on the host computer.
+   *Note: Using `127.0.0.1` locally and `localhost` remotely prevents potential IPv6 binding and resolution issues.*
 
 ---
 
