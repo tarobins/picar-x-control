@@ -72,9 +72,10 @@ To protect the physical robot from crashing into walls, falling off desks, or ov
 * **Startup Auto-Stop**: `server.py` calls `px.stop()` immediately during `Picarx()` initialization so the motors start powered down.
 * **Safety Watchdog Daemon**: A background thread runs on the server. If the car is driving (`speed > 0`) and doesn't receive a movement API call or heartbeat for **1.0 second**, it immediately halts the motors.
 * **Auto-Braking & Collision Prevention (Front)**: 
-  - **Capped Deceleration**: If the car is moving forward and the ultrasonic sensor detects an obstacle between **6cm and 30cm**, the watchdog dynamically scales down the speed to a safe minimum of 25.
-  - **Obstacle Halt**: If the distance drops below **6cm**, the watchdog cuts motor power immediately.
-  - **Forward Command Block**: If the distance in front of the car is under **6cm**, the `/api/move` endpoint blocks any new forward commands, returning a blocked warning, while still allowing steering and reverse movements.
+  - **Capped Deceleration**: If the car is moving forward and the ultrasonic sensor detects an obstacle between **10cm and 40cm**, the watchdog dynamically scales down the speed to a safe minimum of 25.
+  - **Obstacle Halt**: If the distance drops below **10cm**, the watchdog cuts motor power immediately.
+  - **Forward Command Block**: If the distance in front of the car is under **10cm**, the `/api/move` endpoint blocks any new forward commands, returning a blocked warning, while still allowing steering and reverse movements.
+
 
 * **Web Client Heartbeats**: The web client dashboard runs a 250ms interval loop to send periodic drive heartbeats while keys are held down.
 * **Window Focus Loss Safe-Stop**: If the browser tab loses focus or is minimized, a window `blur` listener automatically clears active key states and tells the server to `stop`.

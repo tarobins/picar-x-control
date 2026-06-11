@@ -29,7 +29,8 @@ state = {
     "steering_angle": 0,
     "pan_angle": 0,
     "tilt_angle": 0,
-    "camera_active": camera_started
+    "camera_active": camera_started,
+    "direction": "stop"
 }
 
 # Safety Watchdog variables
@@ -38,12 +39,35 @@ last_move_time = time.time()
 def safety_watchdog():
     global last_move_time, state
     while True:
-        time.sleep(0.1)
-        if px and state["speed"] > 0:
-            if time.time() - last_move_time > 1.0:
-                print("WATCHDOG TRIGGERED: No heartbeat received for 1s. Halting robot!")
-                px.stop()
-                state["speed"] = 0
+        time.sleep(0.05) # Check every 50ms for collision / heartbeat
+        if px:
+            # 1. Collision prevention (Auto-Brake)
+            try:
+                distance = px.get_distance()
+            except:
+                distance = -1
+
+            if state["direction"] == "forward" and distance > 0:
+                if distance < 10:
+                    print(f"Watchdog Auto-Brake: Obstacle at {distance:.1f}cm. Stopping!")
+                    px.stop()
+                    state["speed"] = 0
+                    state["direction"] = "stop"
+                elif distance < 40:
+                    target_speed = state["speed"]
+                    min_speed = 25
+                    if target_speed > min_speed:
+                        scaled = min_speed + (target_speed - min_speed) * (distance - 10) / (40 - 10)
+                        scaled = int(max(min_speed, min(target_speed, scaled)))
+                        px.forward(scaled)
+
+            # 2. Watchdog timeout check (Heartbeat)
+            if state["speed"] > 0:
+                if time.time() - last_move_time > 1.0:
+                    print("WATCHDOG TRIGGERED: No heartbeat received for 1s. Halting robot!")
+                    px.stop()
+                    state["speed"] = 0
+                    state["direction"] = "stop"
 
 watchdog_thread = threading.Thread(target=safety_watchdog, daemon=True)
 watchdog_thread.start()
@@ -97,15 +121,36 @@ def move_car():
     px.set_dir_servo_angle(steering_angle)
     
     # Reset watchdog timer for movement actions
-    if action in ["forward", "backward"]:
+    if action == "forward":
+        try:
+            distance = px.get_distance()
+        except:
+            distance = -1
+            
+        if 0 < distance < 10:
+            px.stop()
+            state["speed"] = 0
+            state["direction"] = "stop"
+            return jsonify({"status": "blocked", "message": "Obstacle in front!", "state": state})
+            
         last_move_time = time.time()
-        if action == "forward":
-            px.forward(speed)
-        else:
-            px.backward(speed)
+        state["direction"] = "forward"
+        # If very close, scale speed immediately
+        if 10 <= distance < 40:
+            min_speed = 25
+            speed = int(max(min_speed, min(speed, min_speed + (speed - min_speed) * (distance - 10) / (40 - 10))))
+        px.forward(speed)
+        
+    elif action == "backward":
+        last_move_time = time.time()
+        state["direction"] = "backward"
+        px.backward(speed)
+        
     elif action == "stop":
         px.stop()
         state["speed"] = 0
+        state["direction"] = "stop"
+        
     else:
         # Just update steering or speed, still update watchdog to prevent stop if dragging sliders
         last_move_time = time.time()
