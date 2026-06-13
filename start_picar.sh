@@ -110,13 +110,13 @@ start_services() {
     log "Opening SSH tunnel for ports ${LOCAL_PORT_API} and ${LOCAL_PORT_STREAM}..."
     # Start SSH tunnel in the background using nohup, exiting if forward fails, and redirect output to log
     # We also disown the background process so it survives when the script exits.
-    nohup ssh -o ExitOnForwardFailure=yes -L 127.0.0.1:${LOCAL_PORT_API}:localhost:${LOCAL_PORT_API} -L 127.0.0.1:${LOCAL_PORT_STREAM}:localhost:${LOCAL_PORT_STREAM} -N "$ROBOT_HOST" > "$TUNNEL_LOG" 2>&1 &
-    local ssh_pid=$!
-    disown "$ssh_pid"
+    ssh -o ExitOnForwardFailure=yes -L 127.0.0.1:${LOCAL_PORT_API}:127.0.0.1:${LOCAL_PORT_API} -L 127.0.0.1:${LOCAL_PORT_STREAM}:127.0.0.1:${LOCAL_PORT_STREAM} -f -N "$ROBOT_HOST" > "$TUNNEL_LOG" 2>&1
 
     # Check if the SSH tunnel started successfully
     sleep 1.5
-    if ! kill -0 "$ssh_pid" 2>/dev/null; then
+    local ssh_pid
+    ssh_pid=$(pgrep -f "ssh -o ExitOnForwardFailure=yes -L 127.0.0.1:${LOCAL_PORT_API}:127.0.0.1:${LOCAL_PORT_API}") || true
+    if [ -z "$ssh_pid" ]; then
         error "SSH tunnel failed to start. Tunnel log contents:"
         cat "$TUNNEL_LOG"
         exit 1

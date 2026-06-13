@@ -92,9 +92,9 @@ If you need to perform the steps manually:
 3. **Opening the SSH tunnel**:
    On the development machine, forward ports 5000 and 9000:
    ```bash
-   ssh -L 127.0.0.1:5000:localhost:5000 -L 127.0.0.1:9000:localhost:9000 -f -N robot
+   ssh -L 127.0.0.1:5000:127.0.0.1:5000 -L 127.0.0.1:9000:127.0.0.1:9000 -f -N robot
    ```
-   *Note: Using `127.0.0.1` locally and `localhost` remotely prevents potential IPv6 binding and resolution issues.*
+   *Note: Using 127.0.0.1 both locally and remotely prevents potential IPv6 binding and resolution issues on the robot (where localhost might resolve to ::1 but Flask only listens on IPv4).*
 
 ---
 
