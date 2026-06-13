@@ -4,7 +4,8 @@ __pycache__/
 .DS_Store
 ssh_tunnel.log
 venv/
-local_server.log
+latency_trace*
+*.log
 
 
 

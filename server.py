@@ -180,6 +180,10 @@ def move_car():
                 "status": "blocked",
                 "message": "Obstacle in front!",
                 "state": state,
+                "telemetry": {
+                    "distance": sensor_data["distance"],
+                    "grayscale": sensor_data["grayscale"]
+                },
                 "t_robot_received": t_recv,
                 "t_robot_done": t_done
             })
@@ -213,6 +217,10 @@ def move_car():
     return jsonify({
         "status": "success",
         "state": state,
+        "telemetry": {
+            "distance": sensor_data["distance"],
+            "grayscale": sensor_data["grayscale"]
+        },
         "t_robot_received": t_recv,
         "t_robot_done": t_done
     })
@@ -243,6 +251,10 @@ def control_camera():
     return jsonify({
         "status": "success",
         "state": state,
+        "telemetry": {
+            "distance": sensor_data["distance"],
+            "grayscale": sensor_data["grayscale"]
+        },
         "t_robot_received": t_recv,
         "t_robot_done": t_done
     })
