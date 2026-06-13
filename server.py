@@ -144,6 +144,7 @@ def get_status():
 
 @app.route('/api/move', methods=['POST'])
 def move_car():
+    t_recv = time.time() * 1000.0
     global last_move_time
     if not px:
         return jsonify({"status": "error", "message": "Picarx not initialized"}), 500
@@ -174,7 +175,14 @@ def move_car():
                 px.stop()
             state["speed"] = 0
             state["direction"] = "stop"
-            return jsonify({"status": "blocked", "message": "Obstacle in front!", "state": state})
+            t_done = time.time() * 1000.0
+            return jsonify({
+                "status": "blocked",
+                "message": "Obstacle in front!",
+                "state": state,
+                "t_robot_received": t_recv,
+                "t_robot_done": t_done
+            })
             
         last_move_time = time.time()
         state["direction"] = "forward"
@@ -201,10 +209,17 @@ def move_car():
         # Just update steering or speed, still update watchdog to prevent stop if dragging sliders
         last_move_time = time.time()
         
-    return jsonify({"status": "success", "state": state})
+    t_done = time.time() * 1000.0
+    return jsonify({
+        "status": "success",
+        "state": state,
+        "t_robot_received": t_recv,
+        "t_robot_done": t_done
+    })
 
 @app.route('/api/camera', methods=['POST'])
 def control_camera():
+    t_recv = time.time() * 1000.0
     if not px:
         return jsonify({"status": "error", "message": "Picarx not initialized"}), 500
 
@@ -224,7 +239,13 @@ def control_camera():
             px.set_cam_tilt_angle(tilt)
         state["tilt_angle"] = tilt
         
-    return jsonify({"status": "success", "state": state})
+    t_done = time.time() * 1000.0
+    return jsonify({
+        "status": "success",
+        "state": state,
+        "t_robot_received": t_recv,
+        "t_robot_done": t_done
+    })
 
 @app.route('/api/camera_switch', methods=['POST'])
 def camera_switch():

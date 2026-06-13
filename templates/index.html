@@ -1018,8 +1018,33 @@ else:
         let lastMoveSentTime = 0;
         const MIN_MOVE_INTERVAL = 50; // minimum ms between API calls
 
+        function logTrace(requestId, type, payload, responseData, tSent, tRecv) {
+            const traceRecord = {
+                request_id: requestId,
+                type: type,
+                payload: payload,
+                t_client_sent: tSent,
+                t_client_received: tRecv,
+                t_proxy_received: responseData ? responseData.t_proxy_received : null,
+                t_proxy_sent: responseData ? responseData.t_proxy_sent : null,
+                t_robot_received: responseData ? responseData.t_robot_received : null,
+                t_robot_done: responseData ? responseData.t_robot_done : null,
+                t_proxy_back: responseData ? responseData.t_proxy_back : null
+            };
+
+            fetch('/api/trace', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(traceRecord),
+                keepalive: true
+            })
+            .catch(err => {}); // Silent catch to avoid spamming console
+        }
+
         function drive(action) {
+            const requestId = 'req_move_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
             const stateToSend = {
+                request_id: requestId,
                 action: action,
                 speed: speed,
                 steering_angle: steeringAngle
@@ -1054,6 +1079,8 @@ else:
             moveController = new AbortController();
             const signal = moveController.signal;
 
+            const tClientSent = Date.now();
+
             fetch('/api/move', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1062,6 +1089,9 @@ else:
             })
             .then(res => res.json())
             .then(data => {
+                const tClientReceived = Date.now();
+                logTrace(requestId, 'move', stateToSend, data, tClientSent, tClientReceived);
+
                 if (data.status === 'blocked') {
                     appendTerminal(`[Auto-Brake] Warning: ${data.message}`, 'term-err');
                     const stopBtn = document.getElementById('ctrl-stop');
@@ -1072,6 +1102,7 @@ else:
             .catch(err => {
                 if (err.name !== 'AbortError') {
                     console.error("Move error:", err);
+                    logTrace(requestId, 'move', stateToSend, { status: "error", error: err.message }, tClientSent, Date.now());
                 }
             })
             .finally(() => {
@@ -1229,7 +1260,8 @@ else:
             gimbalMarker.style.left = `${xPct}%`;
             gimbalMarker.style.top = `${yPct}%`;
 
-            const stateToSend = { pan: pan, tilt: tilt };
+            const requestId = 'req_cam_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            const stateToSend = { request_id: requestId, pan: pan, tilt: tilt };
             const now = Date.now();
             const timeSinceLast = now - lastGimbalSentTime;
 
@@ -1259,6 +1291,8 @@ else:
             gimbalController = new AbortController();
             const signal = gimbalController.signal;
 
+            const tClientSent = Date.now();
+
             // Call API
             fetch('/api/camera', {
                 method: 'POST',
@@ -1266,9 +1300,15 @@ else:
                 body: JSON.stringify(stateToSend),
                 signal: signal
             })
+            .then(res => res.json())
+            .then(data => {
+                const tClientReceived = Date.now();
+                logTrace(requestId, 'camera', stateToSend, data, tClientSent, tClientReceived);
+            })
             .catch(err => {
                 if (err.name !== 'AbortError') {
                     console.error("Camera error:", err);
+                    logTrace(requestId, 'camera', stateToSend, { status: "error", error: err.message }, tClientSent, Date.now());
                 }
             })
             .finally(() => {
