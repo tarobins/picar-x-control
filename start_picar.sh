@@ -36,8 +36,8 @@ check_robot_connection() {
 check_already_running() {
     # Check if we can connect to the local Dashboard
     if curl -s -f --max-time 2 "http://127.0.0.1:${LOCAL_PORT_DASHBOARD}/" >/dev/null 2>&1; then
-        # Check if the tunnel process is running
-        if pgrep -f "ssh -o ExitOnForwardFailure=yes -L .*${LOCAL_PORT_API}:" >/dev/null || pgrep -f "ssh -L .*${LOCAL_PORT_API}:" >/dev/null; then
+        # Check if the tunnel process is running (checks new lowdelay/no compression format or older formats)
+        if pgrep -f "ssh -o ExitOnForwardFailure=yes -o IPQoS=lowdelay" >/dev/null || pgrep -f "ssh -o ExitOnForwardFailure=yes -L .*${LOCAL_PORT_API}:" >/dev/null || pgrep -f "ssh -L .*${LOCAL_PORT_API}:" >/dev/null; then
             # Check if the remote process is running
             if ssh -o ConnectTimeout=3 -q "$ROBOT_HOST" "pgrep -f server.py" >/dev/null; then
                 # Check if local webserver is running
@@ -61,16 +61,24 @@ stop_services() {
         sleep 0.5
     fi
 
-    log "Stopping local SSH tunnel..."
-    # Find PIDs of ssh tunnels forwarding the API port
-    TUNNEL_PIDS=$(pgrep -f "ssh -o ExitOnForwardFailure=yes -L .*${LOCAL_PORT_API}:") || true
-    if [ -z "$TUNNEL_PIDS" ]; then
-        # Backwards compatibility/fallback for older tunnel format
-        TUNNEL_PIDS=$(pgrep -f "ssh -L .*${LOCAL_PORT_API}:") || true
-    fi
+    log "Stopping local SSH tunnels..."
+    # Find PIDs of any ssh tunnel started by this script
+    TUNNEL_PIDS=$(pgrep -f "ssh -o ExitOnForwardFailure=yes -o IPQoS=lowdelay") || true
+    TUNNEL_PIDS_STREAM=$(pgrep -f "ssh -o ExitOnForwardFailure=yes -L 127.0.0.1:${LOCAL_PORT_STREAM}:") || true
     
-    if [ -n "$TUNNEL_PIDS" ]; then
-        for pid in $TUNNEL_PIDS; do
+    # Backwards compatibility/fallback for older combined tunnel format
+    TUNNEL_PIDS_OLD=$(pgrep -f "ssh -o ExitOnForwardFailure=yes -L 127.0.0.1:${LOCAL_PORT_API}:") || true
+    TUNNEL_PIDS_OLD_2=$(pgrep -f "ssh -L .*${LOCAL_PORT_API}:") || true
+    
+    ALL_PIDS=""
+    for pid in $TUNNEL_PIDS $TUNNEL_PIDS_STREAM $TUNNEL_PIDS_OLD $TUNNEL_PIDS_OLD_2; do
+        if [ -n "$pid" ] && [[ ! " $ALL_PIDS " =~ " $pid " ]]; then
+            ALL_PIDS="$ALL_PIDS $pid"
+        fi
+    done
+    
+    if [ -n "$ALL_PIDS" ]; then
+        for pid in $ALL_PIDS; do
             log "Killing tunnel process $pid..."
             kill "$pid" || true
         done
@@ -130,20 +138,24 @@ start_services() {
         exit 1
     fi
 
-    log "Opening SSH tunnel for ports ${LOCAL_PORT_API} and ${LOCAL_PORT_STREAM}..."
-    # Start SSH tunnel in the background as a daemon
-    ssh -o ExitOnForwardFailure=yes -L 127.0.0.1:${LOCAL_PORT_API}:127.0.0.1:5000 -L 127.0.0.1:${LOCAL_PORT_STREAM}:127.0.0.1:${LOCAL_PORT_STREAM} -f -N "$ROBOT_HOST" > "$TUNNEL_LOG" 2>&1
+    log "Opening independent SSH tunnels (Control API & Camera Stream)..."
+    # 1. API tunnel with lowdelay QoS and no compression
+    ssh -o ExitOnForwardFailure=yes -o IPQoS=lowdelay -o Compression=no -L 127.0.0.1:${LOCAL_PORT_API}:127.0.0.1:5000 -f -N "$ROBOT_HOST" > "$TUNNEL_LOG" 2>&1
+    # 2. Camera Stream tunnel
+    ssh -o ExitOnForwardFailure=yes -L 127.0.0.1:${LOCAL_PORT_STREAM}:127.0.0.1:${LOCAL_PORT_STREAM} -f -N "$ROBOT_HOST" >> "$TUNNEL_LOG" 2>&1
 
-    # Check if the SSH tunnel started successfully
+    # Check if both SSH tunnels started successfully
     sleep 1.5
-    local ssh_pid
-    ssh_pid=$(pgrep -f "ssh -o ExitOnForwardFailure=yes -L 127.0.0.1:${LOCAL_PORT_API}:127.0.0.1:") || true
-    if [ -z "$ssh_pid" ]; then
-        error "SSH tunnel failed to start. Tunnel log contents:"
+    local api_pid stream_pid
+    api_pid=$(pgrep -f "ssh -o ExitOnForwardFailure=yes -o IPQoS=lowdelay -o Compression=no -L 127.0.0.1:${LOCAL_PORT_API}:") || true
+    stream_pid=$(pgrep -f "ssh -o ExitOnForwardFailure=yes -L 127.0.0.1:${LOCAL_PORT_STREAM}:") || true
+    
+    if [ -z "$api_pid" ] || [ -z "$stream_pid" ]; then
+        error "One or both SSH tunnels failed to start. Tunnel log contents:"
         cat "$TUNNEL_LOG"
         exit 1
     fi
-    log "SSH tunnel started (PID: $ssh_pid)."
+    log "SSH tunnels started successfully (API PID: $api_pid, Stream PID: $stream_pid)."
 
     # Verification loop
     log "Verifying API connection (polling up to 35s)..."
@@ -194,15 +206,23 @@ check_status() {
         log "Local Webserver: STOPPED"
     fi
 
-    # Check local tunnel
-    TUNNEL_PIDS=$(pgrep -f "ssh -o ExitOnForwardFailure=yes -L .*${LOCAL_PORT_API}:") || true
-    if [ -z "$TUNNEL_PIDS" ]; then
-        TUNNEL_PIDS=$(pgrep -f "ssh -L .*${LOCAL_PORT_API}:") || true
-    fi
-    if [ -n "$TUNNEL_PIDS" ]; then
-        log "Local SSH tunnel: RUNNING (PIDs: $TUNNEL_PIDS)"
+    # Check local tunnels
+    TUNNEL_PIDS_API=$(pgrep -f "ssh -o ExitOnForwardFailure=yes -o IPQoS=lowdelay") || true
+    TUNNEL_PIDS_STREAM=$(pgrep -f "ssh -o ExitOnForwardFailure=yes -L 127.0.0.1:${LOCAL_PORT_STREAM}:") || true
+    TUNNEL_PIDS_OLD=$(pgrep -f "ssh -o ExitOnForwardFailure=yes -L .*${LOCAL_PORT_API}:") || true
+    TUNNEL_PIDS_OLD_2=$(pgrep -f "ssh -L .*${LOCAL_PORT_API}:") || true
+    
+    ALL_TUNNELS=""
+    for pid in $TUNNEL_PIDS_API $TUNNEL_PIDS_STREAM $TUNNEL_PIDS_OLD $TUNNEL_PIDS_OLD_2; do
+        if [ -n "$pid" ] && [[ ! " $ALL_TUNNELS " =~ " $pid " ]]; then
+            ALL_TUNNELS="$ALL_TUNNELS $pid"
+        fi
+    done
+    
+    if [ -n "$ALL_TUNNELS" ]; then
+        log "Local SSH tunnels: RUNNING (PIDs: $ALL_TUNNELS)"
     else
-        log "Local SSH tunnel: STOPPED"
+        log "Local SSH tunnels: STOPPED"
     fi
 
     # Check remote process
