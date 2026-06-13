@@ -1012,6 +1012,7 @@ else:
         });
 
         // State for queueing movement requests to prevent backlogs
+        let moveController = null;
         let moveInFlight = false;
         let pendingMove = null;
         let lastMoveSentTime = 0;
