@@ -36,14 +36,25 @@ def analyze():
     ssh_transits = []
 
     delayed_count = 0
+    timeout_count = 0
+    error_count = 0
 
     for r in records:
-        # Check if it was an error record
-        if r.get("t_proxy_received") is None or r.get("t_robot_received") is None:
-            continue
-            
+        status = r.get("status", "success")
         t_client_sent = r["t_client_sent"]
         t_client_recv = r["t_client_received"]
+
+        # Check if the request was timed out or failed
+        if status == "timeout":
+            timeout_count += 1
+            print(f"{r['type']:<8} | {'N/A':>9} | {'N/A':>13} | {'N/A':>15} | {'N/A':>11} | {'N/A':>11} ❌ TIMEOUT (1.5s)")
+            continue
+        elif status == "error" or r.get("t_proxy_received") is None or r.get("t_robot_received") is None:
+            error_count += 1
+            err_msg = r.get("error") or "Unknown error"
+            print(f"{r['type']:<8} | {'N/A':>9} | {'N/A':>13} | {'N/A':>15} | {'N/A':>11} | {'N/A':>11} ❌ ERROR ({err_msg})")
+            continue
+            
         t_proxy_recv = r["t_proxy_received"]
         t_proxy_sent = r["t_proxy_sent"]
         t_proxy_back = r["t_proxy_back"]
@@ -77,8 +88,14 @@ def analyze():
 
         print(f"{r['type']:<8} | {total_rt:>7.1f}ms | {client_proxy:>10.1f}ms | {proxy_rt:>12.1f}ms | {robot_exec:>8.1f}ms | {ssh_transit:>8.1f}ms {tag}")
 
-    if not total_rts:
-        print("No valid trace records with timing data found.")
+    if not total_rts and (timeout_count > 0 or error_count > 0):
+        print("\n=== SUMMARY STATISTICS ===")
+        print("No successful commands to show latency statistics.")
+        print(f"Timeouts: {timeout_count}")
+        print(f"Errors: {error_count}")
+        return
+    elif not total_rts:
+        print("No valid trace records found.")
         return
 
     print("\n=== SUMMARY STATISTICS ===")
@@ -94,7 +111,10 @@ def analyze():
     stats(robot_execs, "Robot Hardware Execution")
     stats(ssh_transits, "SSH Tunnel Transit RT")
     
+    total_samples = len(total_rts) + timeout_count + error_count
     print(f"\nDelayed commands (>150ms): {delayed_count} / {len(total_rts)} ({delayed_count/len(total_rts)*100:.1f}%)")
+    print(f"Timed out / Lost commands : {timeout_count} / {total_samples} ({timeout_count/total_samples*100:.1f}%)")
+    print(f"Failed / Error commands   : {error_count} / {total_samples} ({error_count/total_samples*100:.1f}%)")
 
 if __name__ == '__main__':
     analyze()

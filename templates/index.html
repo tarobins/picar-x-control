@@ -1025,6 +1025,8 @@ else:
                 payload: payload,
                 t_client_sent: tSent,
                 t_client_received: tRecv,
+                status: responseData ? (responseData.status || 'success') : 'error',
+                error: responseData ? (responseData.error || responseData.message || null) : null,
                 t_proxy_received: responseData ? responseData.t_proxy_received : null,
                 t_proxy_sent: responseData ? responseData.t_proxy_sent : null,
                 t_robot_received: responseData ? responseData.t_robot_received : null,
@@ -1080,6 +1082,13 @@ else:
             const signal = moveController.signal;
 
             const tClientSent = Date.now();
+            let isTimeout = false;
+            const timeoutId = setTimeout(() => {
+                isTimeout = true;
+                if (moveController) {
+                    moveController.abort();
+                }
+            }, 1500); // 1.5s timeout to catch lost/hung commands
 
             fetch('/api/move', {
                 method: 'POST',
@@ -1089,6 +1098,7 @@ else:
             })
             .then(res => res.json())
             .then(data => {
+                clearTimeout(timeoutId);
                 const tClientReceived = Date.now();
                 logTrace(requestId, 'move', stateToSend, data, tClientSent, tClientReceived);
 
@@ -1100,7 +1110,12 @@ else:
                 }
             })
             .catch(err => {
-                if (err.name !== 'AbortError') {
+                clearTimeout(timeoutId);
+                if (err.name === 'AbortError') {
+                    if (isTimeout) {
+                        logTrace(requestId, 'move', stateToSend, { status: "timeout", error: "Request timed out after 1.5s" }, tClientSent, Date.now());
+                    }
+                } else {
                     console.error("Move error:", err);
                     logTrace(requestId, 'move', stateToSend, { status: "error", error: err.message }, tClientSent, Date.now());
                 }
@@ -1292,6 +1307,13 @@ else:
             const signal = gimbalController.signal;
 
             const tClientSent = Date.now();
+            let isTimeout = false;
+            const timeoutId = setTimeout(() => {
+                isTimeout = true;
+                if (gimbalController) {
+                    gimbalController.abort();
+                }
+            }, 1500); // 1.5s timeout to catch lost/hung commands
 
             // Call API
             fetch('/api/camera', {
@@ -1302,11 +1324,17 @@ else:
             })
             .then(res => res.json())
             .then(data => {
+                clearTimeout(timeoutId);
                 const tClientReceived = Date.now();
                 logTrace(requestId, 'camera', stateToSend, data, tClientSent, tClientReceived);
             })
             .catch(err => {
-                if (err.name !== 'AbortError') {
+                clearTimeout(timeoutId);
+                if (err.name === 'AbortError') {
+                    if (isTimeout) {
+                        logTrace(requestId, 'camera', stateToSend, { status: "timeout", error: "Request timed out after 1.5s" }, tClientSent, Date.now());
+                    }
+                } else {
                     console.error("Camera error:", err);
                     logTrace(requestId, 'camera', stateToSend, { status: "error", error: err.message }, tClientSent, Date.now());
                 }
