@@ -202,6 +202,12 @@ def camera_switch():
     
     try:
         if activate and not camera_started:
+            try:
+                Vilib.picam2.close()
+            except Exception as e:
+                pass
+            from picamera2 import Picamera2
+            Vilib.picam2 = Picamera2()
             Vilib.camera_start(vflip=False, hflip=False)
             Vilib.display(local=False, web=True)
             camera_started = True
