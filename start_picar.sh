@@ -10,9 +10,11 @@ set -euo pipefail
 WORKSPACE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROBOT_HOST="robot"
 ROBOT_DIR="~/picar-x"
-LOCAL_PORT_API=5000
+LOCAL_PORT_DASHBOARD=5000
+LOCAL_PORT_API=5001
 LOCAL_PORT_STREAM=9000
 TUNNEL_LOG="${WORKSPACE_DIR}/ssh_tunnel.log"
+SERVER_LOG="${WORKSPACE_DIR}/local_server.log"
 
 log() {
     echo -e "\033[1;34m[PiCar-X]\033[0m $1"
@@ -32,13 +34,16 @@ check_robot_connection() {
 }
 
 check_already_running() {
-    # Check if we can connect to the local API
-    if curl -s -f --max-time 2 "http://127.0.0.1:${LOCAL_PORT_API}/api/status" >/dev/null 2>&1; then
+    # Check if we can connect to the local Dashboard
+    if curl -s -f --max-time 2 "http://127.0.0.1:${LOCAL_PORT_DASHBOARD}/" >/dev/null 2>&1; then
         # Check if the tunnel process is running
         if pgrep -f "ssh -o ExitOnForwardFailure=yes -L .*${LOCAL_PORT_API}:" >/dev/null || pgrep -f "ssh -L .*${LOCAL_PORT_API}:" >/dev/null; then
             # Check if the remote process is running
             if ssh -o ConnectTimeout=3 -q "$ROBOT_HOST" "pgrep -f server.py" >/dev/null; then
-                return 0 # Yes, it is fully running!
+                # Check if local webserver is running
+                if pgrep -f "local_server.py" >/dev/null; then
+                    return 0 # Yes, it is fully running!
+                fi
             fi
         fi
     fi
@@ -46,6 +51,16 @@ check_already_running() {
 }
 
 stop_services() {
+    log "Stopping local webserver..."
+    LOCAL_SERVER_PIDS=$(pgrep -f "local_server.py") || true
+    if [ -n "$LOCAL_SERVER_PIDS" ]; then
+        for pid in $LOCAL_SERVER_PIDS; do
+            log "Killing local webserver process $pid..."
+            kill "$pid" || true
+        done
+        sleep 0.5
+    fi
+
     log "Stopping local SSH tunnel..."
     # Find PIDs of ssh tunnels forwarding the API port
     TUNNEL_PIDS=$(pgrep -f "ssh -o ExitOnForwardFailure=yes -L .*${LOCAL_PORT_API}:") || true
@@ -81,6 +96,10 @@ sync_code() {
         --exclude='picar_x.egg-info' \
         --exclude='.git' \
         --exclude='*.sh' \
+        --exclude='templates/' \
+        --exclude='local_server.py' \
+        --exclude='local_server.log' \
+        --exclude='venv/' \
         "$WORKSPACE_DIR/" "$ROBOT_HOST:$ROBOT_DIR/"
     log "Sync complete."
 }
@@ -95,12 +114,16 @@ start_services() {
 
     log "Checking local port availability..."
     local ports_busy=false
+    if lsof -i :${LOCAL_PORT_DASHBOARD} -t >/dev/null 2>&1; then
+        error "Local port ${LOCAL_PORT_DASHBOARD} is already in use (Dashboard)."
+        ports_busy=true
+    fi
     if lsof -i :${LOCAL_PORT_API} -t >/dev/null 2>&1; then
-        error "Local port ${LOCAL_PORT_API} is already in use by another process."
+        error "Local port ${LOCAL_PORT_API} is already in use (API Tunnel)."
         ports_busy=true
     fi
     if lsof -i :${LOCAL_PORT_STREAM} -t >/dev/null 2>&1; then
-        error "Local port ${LOCAL_PORT_STREAM} is already in use by another process."
+        error "Local port ${LOCAL_PORT_STREAM} is already in use (Stream Tunnel)."
         ports_busy=true
     fi
     if [ "$ports_busy" = true ]; then
@@ -108,14 +131,13 @@ start_services() {
     fi
 
     log "Opening SSH tunnel for ports ${LOCAL_PORT_API} and ${LOCAL_PORT_STREAM}..."
-    # Start SSH tunnel in the background using nohup, exiting if forward fails, and redirect output to log
-    # We also disown the background process so it survives when the script exits.
-    ssh -o ExitOnForwardFailure=yes -L 127.0.0.1:${LOCAL_PORT_API}:127.0.0.1:${LOCAL_PORT_API} -L 127.0.0.1:${LOCAL_PORT_STREAM}:127.0.0.1:${LOCAL_PORT_STREAM} -f -N "$ROBOT_HOST" > "$TUNNEL_LOG" 2>&1
+    # Start SSH tunnel in the background as a daemon
+    ssh -o ExitOnForwardFailure=yes -L 127.0.0.1:${LOCAL_PORT_API}:127.0.0.1:5000 -L 127.0.0.1:${LOCAL_PORT_STREAM}:127.0.0.1:${LOCAL_PORT_STREAM} -f -N "$ROBOT_HOST" > "$TUNNEL_LOG" 2>&1
 
     # Check if the SSH tunnel started successfully
     sleep 1.5
     local ssh_pid
-    ssh_pid=$(pgrep -f "ssh -o ExitOnForwardFailure=yes -L 127.0.0.1:${LOCAL_PORT_API}:127.0.0.1:${LOCAL_PORT_API}") || true
+    ssh_pid=$(pgrep -f "ssh -o ExitOnForwardFailure=yes -L 127.0.0.1:${LOCAL_PORT_API}:127.0.0.1:") || true
     if [ -z "$ssh_pid" ]; then
         error "SSH tunnel failed to start. Tunnel log contents:"
         cat "$TUNNEL_LOG"
@@ -143,8 +165,18 @@ start_services() {
     done
 
     if [ "$success" = true ]; then
-        log "Success! Control Center is running."
-        log "Access Dashboard at: http://127.0.0.1:${LOCAL_PORT_API}"
+        log "Starting local dashboard webserver (local_server.py)..."
+        "${WORKSPACE_DIR}/venv/bin/python3" "${WORKSPACE_DIR}/local_server.py" --daemon --log-file "$SERVER_LOG"
+        sleep 1.5
+
+        if ! pgrep -f "local_server.py" >/dev/null; then
+            error "Local webserver failed to start. Webserver log contents:"
+            cat "$SERVER_LOG"
+            exit 1
+        fi
+
+        log "Success! Control Center Dashboard is running."
+        log "Access Dashboard at: http://127.0.0.1:${LOCAL_PORT_DASHBOARD}"
     else
         error "Failed to connect to the Control Center API. Last curl error: $curl_err"
         log "Fetching last 20 lines of server log from the robot:"
@@ -154,6 +186,14 @@ start_services() {
 }
 
 check_status() {
+    # Check local webserver
+    LOCAL_SERVER_PIDS=$(pgrep -f "local_server.py") || true
+    if [ -n "$LOCAL_SERVER_PIDS" ]; then
+        log "Local Webserver: RUNNING (PIDs: $LOCAL_SERVER_PIDS)"
+    else
+        log "Local Webserver: STOPPED"
+    fi
+
     # Check local tunnel
     TUNNEL_PIDS=$(pgrep -f "ssh -o ExitOnForwardFailure=yes -L .*${LOCAL_PORT_API}:") || true
     if [ -z "$TUNNEL_PIDS" ]; then

@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify
 from picarx import Picarx
 from vilib import Vilib
 import time
@@ -105,9 +105,7 @@ def get_cpu_temp():
     except:
         return 0.0
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+
 
 @app.route('/api/status', methods=['GET'])
 def get_status():
