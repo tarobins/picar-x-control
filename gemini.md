@@ -149,3 +149,11 @@ To fix command backlog and lag spikes over congested 2.4 GHz Wi-Fi, the followin
   ```bash
   ./analyze_latency.py
   ```
+
+### E. Camera Gimbal Zero-Calibration (Tare)
+* **Features**: Added "Set Zero" and "Reset" buttons to the camera gimbal UI panel.
+* **Client-Side Offset System**:
+  - Clicking **Set Zero** establishes the current physical angles as the relative `0°` origin (stored in `localStorage` for session persistence).
+  - The UI trackpad and arrow keys compute angles relative to this zero point while translating them to correct absolute physical coordinates sent to the robot.
+  - A dashed purple circular target (`gimbal-zero-indicator`) appears on the pad to visually mark the calibrated zero coordinate relative to the physical servo center.
+  - **Hardware boundary clipping**: The UI dot accurately bounds itself within the actual physical limits (`[-90, 90]` for Pan, `[-35, 65]` for Tilt) regardless of the calibration offset.
