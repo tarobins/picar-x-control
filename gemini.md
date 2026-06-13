@@ -113,3 +113,39 @@ To protect the physical robot from crashing into walls, falling off desks, or ov
 * **Web Client Heartbeats**: The web client dashboard runs a 250ms interval loop to send periodic drive heartbeats while keys are held down.
 * **Window Focus Loss Safe-Stop**: If the browser tab loses focus or is minimized, a window `blur` listener automatically clears active key states and tells the server to `stop`.
 * **On-Demand Camera**: Camera streaming is disabled by default (`"camera_active": false`) to prevent latency and CPU starvation. It is toggled on/off dynamically using Vilib's `camera_start()` / `camera_close()` over the `/api/camera_switch` endpoint.
+
+---
+
+## 6. Recent Optimizations & Tuning (June 12, 2026)
+
+To fix command backlog and lag spikes over congested 2.4 GHz Wi-Fi, the following system-wide upgrades were made:
+
+### A. Network Tunnel Splitting (Head-of-Line Blocking Fix)
+* **Problem**: Forwarding the heavy MJPEG Camera Stream (port 9000) and the Control API (port 5001) over the *same* SSH connection caused TCP head-of-line blocking. Video packets saturated the TCP buffer, locking driving commands behind them.
+* **Fix**: Separated the tunnels in `start_picar.sh` into two independent SSH processes:
+  - **API Tunnel**: Started with `-o IPQoS=lowdelay` (router packet prioritization) and `-o Compression=no` (drops compression lag).
+  - **Video Stream Tunnel**: Transports video data independently.
+  - *Result*: Slashed worst-case roundtrip delay from **8.9 seconds down to 82ms**.
+
+### B. Single-Threaded I2C Locking & Sensor Caching
+* **Problem**: Simultaneous I2C/GPIO calls to `px.get_distance()` and motors/servos across multiple Flask threads caused resource conflicts (Remote I/O errors) and blocked execution paths.
+* **Fix**:
+  - Centralized all physical sensor reads (`get_distance` and `get_grayscale`) inside the background `safety_watchdog` thread running at a steady 50ms interval.
+  - Stored readings in a thread-safe cache (`sensor_data`).
+  - Wrapped all `px` hardware interactions in `server.py` inside a global mutex `i2c_lock = threading.Lock()`.
+  - *Result*: Average robot hardware execution time dropped to just **6ms**.
+
+### C. Inline Telemetry & Polling Back-off
+* **Problem**: Background telemetry polling from the client every 350ms clogged the network channel.
+* **Fix**:
+  - Telemetry is now returned inline in the JSON responses of `/api/move` and `/api/camera`.
+  - The client's background telemetry polling interval was backed off from 350ms to **1500ms** (a 76% traffic reduction).
+  - *Result*: The Control API channel remains idle until a command is sent, giving commands immediate priority.
+
+### D. Latency Tracing & Lost-Request Watchdog
+* **Timeout Watchdog**: The client now enforces a `1.5-second` timeout on driving/gimbal fetches. If a command is lost or hung, the client aborts it and logs a `timeout` trace.
+* **`latency_trace.log`**: Every completed, timed-out, or failed command logs a timing trace record (client sent/recv, proxy recv/sent/back, robot recv/done).
+* **`analyze_latency.py`**: A local analysis utility tool parses the trace logs and outputs average, max, min, and percentage breakdowns for segment latencies, highlighting delayed/lost commands. Run it locally via:
+  ```bash
+  ./analyze_latency.py
+  ```
