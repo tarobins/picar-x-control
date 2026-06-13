@@ -1011,10 +1011,42 @@ else:
             });
         });
 
-        // Abort controllers for api requests to prevent network queuing
-        let moveController = null;
+        // State for queueing movement requests to prevent backlogs
+        let moveInFlight = false;
+        let pendingMove = null;
+        let lastMoveSentTime = 0;
+        const MIN_MOVE_INTERVAL = 50; // minimum ms between API calls
 
         function drive(action) {
+            const stateToSend = {
+                action: action,
+                speed: speed,
+                steering_angle: steeringAngle
+            };
+
+            const now = Date.now();
+            const timeSinceLast = now - lastMoveSentTime;
+
+            if (moveInFlight || timeSinceLast < MIN_MOVE_INTERVAL) {
+                pendingMove = stateToSend;
+                
+                // If we're not in flight but waiting for throttle, schedule a check
+                if (!moveInFlight) {
+                    const delay = MIN_MOVE_INTERVAL - timeSinceLast;
+                    setTimeout(() => {
+                        if (pendingMove && !moveInFlight) {
+                            const next = pendingMove;
+                            pendingMove = null;
+                            drive(next.action);
+                        }
+                    }, delay);
+                }
+                return;
+            }
+
+            moveInFlight = true;
+            lastMoveSentTime = now;
+
             if (moveController) {
                 moveController.abort();
             }
@@ -1024,11 +1056,7 @@ else:
             fetch('/api/move', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: action,
-                    speed: speed,
-                    steering_angle: steeringAngle
-                }),
+                body: JSON.stringify(stateToSend),
                 signal: signal
             })
             .then(res => res.json())
@@ -1044,6 +1072,14 @@ else:
                 if (err.name !== 'AbortError') {
                     console.error("Move error:", err);
                 }
+            })
+            .finally(() => {
+                moveInFlight = false;
+                if (pendingMove) {
+                    const next = pendingMove;
+                    pendingMove = null;
+                    drive(next.action);
+                }
             });
         }
 
@@ -1051,35 +1087,11 @@ else:
             steeringAngle = angle;
             steerSlider.value = angle;
             steerVal.textContent = angle;
-
-            if (moveController) {
-                moveController.abort();
-            }
-            moveController = new AbortController();
-            const signal = moveController.signal;
-
-            fetch('/api/move', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'steer',
-                    speed: speed,
-                    steering_angle: steeringAngle
-                }),
-                signal: signal
-            })
-            .catch(err => {
-                if (err.name !== 'AbortError') {
-                    console.error("Steer error:", err);
-                }
-            });
+            drive('steer');
         }
 
-        // Throttle API requests to max 10Hz
+        // Throttle API requests to max 10Hz (fallback, now mostly covered by unified drive)
         function sendMoveCommand(action) {
-            const now = Date.now();
-            if (now - lastMoveRequest < 100) return;
-            lastMoveRequest = now;
             drive(action);
         }
 
@@ -1196,6 +1208,10 @@ else:
         }
 
         let gimbalController = null;
+        let gimbalInFlight = false;
+        let pendingGimbal = null;
+        let lastGimbalSentTime = 0;
+        const MIN_GIMBAL_INTERVAL = 50; // minimum ms between camera API calls
 
         function setGimbalAngles(pan, tilt) {
             panAngle = pan;
@@ -1212,6 +1228,30 @@ else:
             gimbalMarker.style.left = `${xPct}%`;
             gimbalMarker.style.top = `${yPct}%`;
 
+            const stateToSend = { pan: pan, tilt: tilt };
+            const now = Date.now();
+            const timeSinceLast = now - lastGimbalSentTime;
+
+            if (gimbalInFlight || timeSinceLast < MIN_GIMBAL_INTERVAL) {
+                pendingGimbal = stateToSend;
+                
+                // If we're not in flight but waiting for throttle, schedule a check
+                if (!gimbalInFlight) {
+                    const delay = MIN_GIMBAL_INTERVAL - timeSinceLast;
+                    setTimeout(() => {
+                        if (pendingGimbal && !gimbalInFlight) {
+                            const next = pendingGimbal;
+                            pendingGimbal = null;
+                            setGimbalAngles(next.pan, next.tilt);
+                        }
+                    }, delay);
+                }
+                return;
+            }
+
+            gimbalInFlight = true;
+            lastGimbalSentTime = now;
+
             if (gimbalController) {
                 gimbalController.abort();
             }
@@ -1222,12 +1262,20 @@ else:
             fetch('/api/camera', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pan: pan, tilt: tilt }),
+                body: JSON.stringify(stateToSend),
                 signal: signal
             })
             .catch(err => {
                 if (err.name !== 'AbortError') {
                     console.error("Camera error:", err);
+                }
+            })
+            .finally(() => {
+                gimbalInFlight = false;
+                if (pendingGimbal) {
+                    const next = pendingGimbal;
+                    pendingGimbal = null;
+                    setGimbalAngles(next.pan, next.tilt);
                 }
             });
         }

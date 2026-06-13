@@ -15,12 +15,15 @@ from io import StringIO
 
 app = Flask(__name__)
 
+i2c_lock = threading.Lock()
+
 # Initialize PiCar-X
 try:
-    px = Picarx()
-    if px:
-        px.stop()
-        print("PiCar-X hardware initialized and stopped.")
+    with i2c_lock:
+        px = Picarx()
+        if px:
+            px.stop()
+            print("PiCar-X hardware initialized and stopped.")
 except Exception as e:
     print(f"Error initializing Picarx: {e}")
     px = None
@@ -36,6 +39,12 @@ state = {
     "tilt_angle": 0,
     "camera_active": camera_started,
     "direction": "stop"
+}
+
+# Shared sensor readings
+sensor_data = {
+    "distance": -1.0,
+    "grayscale": [0, 0, 0]
 }
 
 # Safety Watchdog variables
@@ -57,21 +66,33 @@ def get_safety_thresholds(current_speed):
     return stop_dist, slow_dist
 
 def safety_watchdog():
-    global last_move_time, state
+    global last_move_time, state, sensor_data
     while True:
         time.sleep(0.05) # Check every 50ms for collision / heartbeat
         if px:
-            # 1. Collision prevention (Auto-Brake)
+            # 1. Read sensors under lock
             try:
-                distance = px.get_distance()
+                with i2c_lock:
+                    distance = round(px.get_distance(), 1)
             except:
-                distance = -1
+                distance = -1.0
+                
+            try:
+                with i2c_lock:
+                    grayscale = px.get_grayscale_data()
+            except:
+                grayscale = [0, 0, 0]
+                
+            sensor_data["distance"] = distance
+            sensor_data["grayscale"] = grayscale
 
+            # 2. Collision prevention (Auto-Brake)
             if state["direction"] == "forward" and distance > 0:
                 stop_dist, slow_dist = get_safety_thresholds(state["speed"])
                 if distance < stop_dist:
                     print(f"Watchdog Auto-Brake: Obstacle at {distance:.1f}cm. Stopping!")
-                    px.stop()
+                    with i2c_lock:
+                        px.stop()
                     state["speed"] = 0
                     state["direction"] = "stop"
                 elif distance < slow_dist:
@@ -80,13 +101,15 @@ def safety_watchdog():
                     if target_speed > min_speed:
                         scaled = min_speed + (target_speed - min_speed) * (distance - stop_dist) / (slow_dist - stop_dist)
                         scaled = int(max(min_speed, min(target_speed, scaled)))
-                        px.forward(scaled)
+                        with i2c_lock:
+                            px.forward(scaled)
 
-            # 2. Watchdog timeout check (Heartbeat)
+            # 3. Watchdog timeout check (Heartbeat)
             if state["speed"] > 0:
                 if time.time() - last_move_time > 1.0:
                     print("WATCHDOG TRIGGERED: No heartbeat received for 1s. Halting robot!")
-                    px.stop()
+                    with i2c_lock:
+                        px.stop()
                     state["speed"] = 0
                     state["direction"] = "stop"
 
@@ -137,19 +160,18 @@ def move_car():
     state["speed"] = speed
     state["steering_angle"] = steering_angle
     
-    px.set_dir_servo_angle(steering_angle)
+    with i2c_lock:
+        px.set_dir_servo_angle(steering_angle)
     
     # Reset watchdog timer for movement actions
     if action == "forward":
-        try:
-            distance = px.get_distance()
-        except:
-            distance = -1
+        distance = sensor_data["distance"]
             
         stop_dist, slow_dist = get_safety_thresholds(speed)
         
         if 0 < distance < stop_dist:
-            px.stop()
+            with i2c_lock:
+                px.stop()
             state["speed"] = 0
             state["direction"] = "stop"
             return jsonify({"status": "blocked", "message": "Obstacle in front!", "state": state})
@@ -160,15 +182,18 @@ def move_car():
         if stop_dist <= distance < slow_dist:
             min_speed = 25
             speed = int(max(min_speed, min(speed, min_speed + (speed - min_speed) * (distance - stop_dist) / (slow_dist - stop_dist))))
-        px.forward(speed)
+        with i2c_lock:
+            px.forward(speed)
         
     elif action == "backward":
         last_move_time = time.time()
         state["direction"] = "backward"
-        px.backward(speed)
+        with i2c_lock:
+            px.backward(speed)
         
     elif action == "stop":
-        px.stop()
+        with i2c_lock:
+            px.stop()
         state["speed"] = 0
         state["direction"] = "stop"
         
@@ -189,12 +214,14 @@ def control_camera():
     
     if pan is not None:
         pan = max(-90, min(90, int(pan)))
-        px.set_cam_pan_angle(pan)
+        with i2c_lock:
+            px.set_cam_pan_angle(pan)
         state["pan_angle"] = pan
         
     if tilt is not None:
         tilt = max(-35, min(65, int(tilt)))
-        px.set_cam_tilt_angle(tilt)
+        with i2c_lock:
+            px.set_cam_tilt_angle(tilt)
         state["tilt_angle"] = tilt
         
     return jsonify({"status": "success", "state": state})
@@ -208,16 +235,21 @@ def camera_switch():
     try:
         if activate and not camera_started:
             try:
-                Vilib.picam2.close()
+                # Run camera close under lock or let picamera handle it
+                # Vilib has its own internal setup, but let's make sure it doesn't collide
+                with i2c_lock:
+                    Vilib.picam2.close()
             except Exception as e:
                 pass
             from picamera2 import Picamera2
-            Vilib.picam2 = Picamera2()
-            Vilib.camera_start(vflip=False, hflip=False, size=(320, 240))
-            Vilib.display(local=False, web=True)
+            with i2c_lock:
+                Vilib.picam2 = Picamera2()
+                Vilib.camera_start(vflip=False, hflip=False, size=(320, 240))
+                Vilib.display(local=False, web=True)
             camera_started = True
         elif not activate and camera_started:
-            Vilib.camera_close()
+            with i2c_lock:
+                Vilib.camera_close()
             camera_started = False
         state["camera_active"] = camera_started
         return jsonify({"status": "success", "camera_active": camera_started})
@@ -229,17 +261,7 @@ def get_telemetry():
     if not px:
         return jsonify({"status": "error", "message": "Picarx not initialized"}), 500
         
-    try:
-        distance = round(px.get_distance(), 1)
-    except Exception as e:
-        distance = -1.0
-        
-    try:
-        grayscale = px.get_grayscale_data()
-    except Exception as e:
-        grayscale = [0, 0, 0]
-        
-    # Read system info
+    # Read system info (non-blocking)
     cpu_temp = get_cpu_temp()
     cpu_usage = psutil.cpu_percent()
     mem = psutil.virtual_memory()
@@ -248,8 +270,8 @@ def get_telemetry():
     return jsonify({
         "status": "success",
         "telemetry": {
-            "distance": distance,
-            "grayscale": grayscale,
+            "distance": sensor_data["distance"],
+            "grayscale": sensor_data["grayscale"],
             "cpu_temp": cpu_temp,
             "cpu_usage": cpu_usage,
             "memory_usage": mem_usage
