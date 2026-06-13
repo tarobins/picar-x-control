@@ -1,7 +1,12 @@
 from flask import Flask, request, jsonify
 from picarx import Picarx
 from vilib import Vilib
+import cv2
+import vilib.vilib
 import time
+
+# Monkeypatch get_frame to optimize JPEG compression (quality=50) and handle None frames safely
+vilib.vilib.get_frame = lambda: cv2.imencode('.jpg', Vilib.flask_img, [int(cv2.IMWRITE_JPEG_QUALITY), 50])[1].tobytes() if Vilib.flask_img is not None else b''
 import sys
 import os
 import psutil
@@ -208,7 +213,7 @@ def camera_switch():
                 pass
             from picamera2 import Picamera2
             Vilib.picam2 = Picamera2()
-            Vilib.camera_start(vflip=False, hflip=False)
+            Vilib.camera_start(vflip=False, hflip=False, size=(320, 240))
             Vilib.display(local=False, web=True)
             camera_started = True
         elif not activate and camera_started:
