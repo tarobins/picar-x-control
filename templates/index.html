@@ -569,7 +569,7 @@
                 <div class="gimbal-area" id="gimbal-pad">
                     <div class="gimbal-crosshair-h"></div>
                     <div class="gimbal-crosshair-v"></div>
-                    <div class="gimbal-zero-indicator" id="gimbal-zero-indicator" style="position: absolute; width: 12px; height: 12px; border: 2px dashed var(--accent-purple); border-radius: 50%; transform: translate(-50%, -50%); display: none; pointer-events: none; opacity: 0.75;" title="Custom zero position"></div>
+                    <div class="gimbal-hw-center" id="gimbal-hw-center" style="position: absolute; width: 12px; height: 12px; border: 2px dashed rgba(255, 255, 255, 0.45); border-radius: 50%; transform: translate(-50%, -50%); display: none; pointer-events: none;" title="Hardware Center (0°, 0°)"></div>
                     <div class="gimbal-target" id="gimbal-marker"></div>
                 </div>
             </div>
@@ -1285,15 +1285,13 @@ else:
             const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
             const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
 
-            // Map pad coordinate to physical angles
-            const physPan = Math.round((x / rect.width) * 180 - 90);
-            const physTilt = Math.round(65 - (y / rect.height) * 100);
+            // Map pad coordinate directly to relative display angles
+            // Pan maps to [-90, 90] (span of 180)
+            const pan = Math.round((x / rect.width) * 180 - 90);
+            // Tilt maps symmetrically to [-65, 65] (span of 130) so center (50%) is 0°
+            const tilt = Math.round(65 - (y / rect.height) * 130);
 
-            // Convert physical angles to relative display angles
-            const panRel = physPan - panZeroOffset;
-            const tiltRel = physTilt - tiltZeroOffset;
-
-            setGimbalAngles(panRel, tiltRel);
+            setGimbalAngles(pan, tilt);
         }
 
         let gimbalController = null;
@@ -1318,23 +1316,25 @@ else:
             panVal.textContent = panAngle;
             tiltVal.textContent = tiltAngle;
 
-            // Position target marker based on the physical position
-            const xPct = ((physicalPan + 90) / 180) * 100;
-            const yPct = ((65 - physicalTilt) / 100) * 100;
+            // Position target marker (pink dot) based on display angles
+            // This ensures that when display angle is (0, 0), the dot is exactly at (50%, 50%)
+            const xPct = ((panAngle + 90) / 180) * 100;
+            const yPct = ((65 - tiltAngle) / 130) * 100;
 
             gimbalMarker.style.left = `${xPct}%`;
             gimbalMarker.style.top = `${yPct}%`;
 
-            // Update zero position indicator on the pad
-            const zeroIndicator = document.getElementById('gimbal-zero-indicator');
+            // Position the absolute Hardware Center indicator relative to the calibrated center
+            const hwCenterIndicator = document.getElementById('gimbal-hw-center');
             if (panZeroOffset !== 0 || tiltZeroOffset !== 0) {
-                const zxPct = ((panZeroOffset + 90) / 180) * 100;
-                const zyPct = ((65 - tiltZeroOffset) / 100) * 100;
-                zeroIndicator.style.left = `${zxPct}%`;
-                zeroIndicator.style.top = `${zyPct}%`;
-                zeroIndicator.style.display = 'block';
+                // Physical center (0, 0) corresponds to display (-panZeroOffset, -tiltZeroOffset)
+                const zxPct = ((-panZeroOffset + 90) / 180) * 100;
+                const zyPct = ((65 - (-tiltZeroOffset)) / 130) * 100;
+                hwCenterIndicator.style.left = `${zxPct}%`;
+                hwCenterIndicator.style.top = `${zyPct}%`;
+                hwCenterIndicator.style.display = 'block';
             } else {
-                zeroIndicator.style.display = 'none';
+                hwCenterIndicator.style.display = 'none';
             }
 
             const requestId = 'req_cam_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
