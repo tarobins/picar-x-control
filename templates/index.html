@@ -554,7 +554,11 @@
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
                     Camera Gimbal
                 </div>
-                <button class="btn-primary" id="btn-center-gimbal" style="padding: 0.2rem 0.5rem; font-size: 0.7rem; border-radius: 4px; font-weight: 600;">Center</button>
+                <div style="display: flex; gap: 0.4rem;">
+                    <button class="btn-primary" id="btn-set-zero-gimbal" style="padding: 0.2rem 0.5rem; font-size: 0.7rem; border-radius: 4px; font-weight: 600; background: linear-gradient(135deg, var(--accent-purple), #8a2be2); color: #fff;" title="Set current camera position as the new zero reference">Set Zero</button>
+                    <button class="btn-primary" id="btn-reset-zero-gimbal" style="padding: 0.2rem 0.5rem; font-size: 0.7rem; border-radius: 4px; font-weight: 600; background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid rgba(255,255,255,0.1);" title="Clear custom zero reference and revert to hardware center">Reset</button>
+                    <button class="btn-primary" id="btn-center-gimbal" style="padding: 0.2rem 0.5rem; font-size: 0.7rem; border-radius: 4px; font-weight: 600;" title="Aim camera to the zero reference">Center</button>
+                </div>
             </div>
 
             <div class="control-group">
@@ -565,6 +569,7 @@
                 <div class="gimbal-area" id="gimbal-pad">
                     <div class="gimbal-crosshair-h"></div>
                     <div class="gimbal-crosshair-v"></div>
+                    <div class="gimbal-zero-indicator" id="gimbal-zero-indicator" style="position: absolute; width: 12px; height: 12px; border: 2px dashed var(--accent-purple); border-radius: 50%; transform: translate(-50%, -50%); display: none; pointer-events: none; opacity: 0.75;" title="Custom zero position"></div>
                     <div class="gimbal-target" id="gimbal-marker"></div>
                 </div>
             </div>
@@ -757,8 +762,10 @@ px.stop()
         // State
         let speed = 50;
         let steeringAngle = 0;
-        let panAngle = 0;
-        let tiltAngle = 0;
+        let panAngle = 0; // Display angle (relative to custom zero)
+        let tiltAngle = 0; // Display angle (relative to custom zero)
+        let panZeroOffset = parseFloat(localStorage.getItem('gimbal_pan_zero') || '0');
+        let tiltZeroOffset = parseFloat(localStorage.getItem('gimbal_tilt_zero') || '0');
         let activeKeys = new Set();
         let cameraActive = true;
         let lastMoveRequest = 0;
@@ -906,6 +913,34 @@ else:
 
         document.getElementById('btn-center-steer').addEventListener('click', () => steer(0));
         document.getElementById('btn-center-gimbal').addEventListener('click', () => setGimbalAngles(0, 0));
+        
+        document.getElementById('btn-set-zero-gimbal').addEventListener('click', () => {
+            // Whatever point we are at when it is pressed becomes the new zero
+            const currentPhysPan = panAngle + panZeroOffset;
+            const currentPhysTilt = tiltAngle + tiltZeroOffset;
+            
+            panZeroOffset = currentPhysPan;
+            tiltZeroOffset = currentPhysTilt;
+            
+            localStorage.setItem('gimbal_pan_zero', panZeroOffset);
+            localStorage.setItem('gimbal_tilt_zero', tiltZeroOffset);
+            
+            // Re-render at relative display (0, 0)
+            setGimbalAngles(0, 0);
+            appendTerminal(`[Gimbal] Calibration updated. Zero set at physical Pan: ${panZeroOffset}°, Tilt: ${tiltZeroOffset}°`, 'term-out');
+        });
+
+        document.getElementById('btn-reset-zero-gimbal').addEventListener('click', () => {
+            panZeroOffset = 0;
+            tiltZeroOffset = 0;
+            
+            localStorage.removeItem('gimbal_pan_zero');
+            localStorage.removeItem('gimbal_tilt_zero');
+            
+            // Re-render display using current physical angles relative to physical 0
+            setGimbalAngles(panAngle, tiltAngle);
+            appendTerminal('[Gimbal] Calibration reset to hardware center (0°, 0°)', 'term-out');
+        });
 
         // Handle drive deck clicks
         document.getElementById('ctrl-up').addEventListener('mousedown', () => {
@@ -1250,12 +1285,15 @@ else:
             const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
             const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
 
-            // Map x (0 to width) to Pan (-90 to 90)
-            const pan = Math.round((x / rect.width) * 180 - 90);
-            // Map y (0 to height) to Tilt (65 to -35) - invert Y axis since up is positive angle
-            const tilt = Math.round(65 - (y / rect.height) * 100);
+            // Map pad coordinate to physical angles
+            const physPan = Math.round((x / rect.width) * 180 - 90);
+            const physTilt = Math.round(65 - (y / rect.height) * 100);
 
-            setGimbalAngles(pan, tilt);
+            // Convert physical angles to relative display angles
+            const panRel = physPan - panZeroOffset;
+            const tiltRel = physTilt - tiltZeroOffset;
+
+            setGimbalAngles(panRel, tiltRel);
         }
 
         let gimbalController = null;
@@ -1265,27 +1303,48 @@ else:
         const MIN_GIMBAL_INTERVAL = 50; // minimum ms between camera API calls
 
         function setGimbalAngles(pan, tilt) {
-            panAngle = pan;
-            tiltAngle = tilt;
-            panVal.textContent = pan;
-            tiltVal.textContent = tilt;
+            // Convert relative display angles to physical angles
+            let physicalPan = pan + panZeroOffset;
+            let physicalTilt = tilt + tiltZeroOffset;
 
-            // Move the GUI dot
-            // Map Pan (-90 to 90) to percent (0 to 100)
-            const xPct = ((pan + 90) / 180) * 100;
-            // Map Tilt (-35 to 65) to percent (100 to 0)
-            const yPct = ((65 - tilt) / 100) * 100;
+            // Clamp physical angles to physical hardware limits
+            physicalPan = Math.max(-90, Math.min(90, physicalPan));
+            physicalTilt = Math.max(-35, Math.min(65, physicalTilt));
+
+            // Update display angles to match the actual physical angles
+            panAngle = physicalPan - panZeroOffset;
+            tiltAngle = physicalTilt - tiltZeroOffset;
+
+            panVal.textContent = panAngle;
+            tiltVal.textContent = tiltAngle;
+
+            // Position target marker based on the physical position
+            const xPct = ((physicalPan + 90) / 180) * 100;
+            const yPct = ((65 - physicalTilt) / 100) * 100;
 
             gimbalMarker.style.left = `${xPct}%`;
             gimbalMarker.style.top = `${yPct}%`;
 
+            // Update zero position indicator on the pad
+            const zeroIndicator = document.getElementById('gimbal-zero-indicator');
+            if (panZeroOffset !== 0 || tiltZeroOffset !== 0) {
+                const zxPct = ((panZeroOffset + 90) / 180) * 100;
+                const zyPct = ((65 - tiltZeroOffset) / 100) * 100;
+                zeroIndicator.style.left = `${zxPct}%`;
+                zeroIndicator.style.top = `${zyPct}%`;
+                zeroIndicator.style.display = 'block';
+            } else {
+                zeroIndicator.style.display = 'none';
+            }
+
             const requestId = 'req_cam_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            const stateToSend = { request_id: requestId, pan: pan, tilt: tilt };
+            // Send physical absolute angles to the robot
+            const stateToSend = { request_id: requestId, pan: physicalPan, tilt: physicalTilt };
             const now = Date.now();
             const timeSinceLast = now - lastGimbalSentTime;
 
             if (gimbalInFlight || timeSinceLast < MIN_GIMBAL_INTERVAL) {
-                pendingGimbal = stateToSend;
+                pendingGimbal = { pan: pan, tilt: tilt }; // store relative angles
                 
                 // If we're not in flight but waiting for throttle, schedule a check
                 if (!gimbalInFlight) {
@@ -1358,8 +1417,8 @@ else:
         }
 
         function adjustCamera(panDelta, tiltDelta) {
-            const pan = Math.max(-90, Math.min(90, panAngle + panDelta));
-            const tilt = Math.max(-35, Math.min(65, tiltAngle + tiltDelta));
+            const pan = Math.max(-90 - panZeroOffset, Math.min(90 - panZeroOffset, panAngle + panDelta));
+            const tilt = Math.max(-35 - tiltZeroOffset, Math.min(65 - tiltZeroOffset, tiltAngle + tiltDelta));
             setGimbalAngles(pan, tilt);
         }
 
@@ -1527,7 +1586,7 @@ else:
                     
                     cameraActive = st.camera_active;
                     
-                    setGimbalAngles(st.pan_angle || 0, st.tilt_angle || 0);
+                    setGimbalAngles((st.pan_angle || 0) - panZeroOffset, (st.tilt_angle || 0) - tiltZeroOffset);
                     initCamera();
                 }
             })
