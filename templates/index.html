@@ -1011,7 +1011,16 @@ else:
             });
         });
 
+        // Abort controllers for api requests to prevent network queuing
+        let moveController = null;
+
         function drive(action) {
+            if (moveController) {
+                moveController.abort();
+            }
+            moveController = new AbortController();
+            const signal = moveController.signal;
+
             fetch('/api/move', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1019,7 +1028,8 @@ else:
                     action: action,
                     speed: speed,
                     steering_angle: steeringAngle
-                })
+                }),
+                signal: signal
             })
             .then(res => res.json())
             .then(data => {
@@ -1030,13 +1040,24 @@ else:
                     setTimeout(() => stopBtn.style.backgroundColor = '', 300);
                 }
             })
-            .catch(err => console.error("Move error:", err));
+            .catch(err => {
+                if (err.name !== 'AbortError') {
+                    console.error("Move error:", err);
+                }
+            });
         }
 
         function steer(angle) {
             steeringAngle = angle;
             steerSlider.value = angle;
             steerVal.textContent = angle;
+
+            if (moveController) {
+                moveController.abort();
+            }
+            moveController = new AbortController();
+            const signal = moveController.signal;
+
             fetch('/api/move', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1044,9 +1065,14 @@ else:
                     action: 'steer',
                     speed: speed,
                     steering_angle: steeringAngle
-                })
+                }),
+                signal: signal
             })
-            .catch(err => console.error("Steer error:", err));
+            .catch(err => {
+                if (err.name !== 'AbortError') {
+                    console.error("Steer error:", err);
+                }
+            });
         }
 
         // Throttle API requests to max 10Hz
@@ -1169,6 +1195,8 @@ else:
             setGimbalAngles(pan, tilt);
         }
 
+        let gimbalController = null;
+
         function setGimbalAngles(pan, tilt) {
             panAngle = pan;
             tiltAngle = tilt;
@@ -1184,13 +1212,24 @@ else:
             gimbalMarker.style.left = `${xPct}%`;
             gimbalMarker.style.top = `${yPct}%`;
 
+            if (gimbalController) {
+                gimbalController.abort();
+            }
+            gimbalController = new AbortController();
+            const signal = gimbalController.signal;
+
             // Call API
             fetch('/api/camera', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pan: pan, tilt: tilt })
+                body: JSON.stringify({ pan: pan, tilt: tilt }),
+                signal: signal
             })
-            .catch(err => console.error("Camera error:", err));
+            .catch(err => {
+                if (err.name !== 'AbortError') {
+                    console.error("Camera error:", err);
+                }
+            });
         }
 
         function adjustCamera(panDelta, tiltDelta) {
