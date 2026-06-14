@@ -88,7 +88,7 @@ stop_services() {
     fi
 
     log "Stopping Flask server on the robot..."
-    ssh "$ROBOT_HOST" "pkill -f server.py" || true
+    ssh "$ROBOT_HOST" "pkill -9 -f server.py" || true
     
     # Give the robot OS a moment to free the camera device and socket bindings
     log "Waiting 1.0s for remote resources to release..."
