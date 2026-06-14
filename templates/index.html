@@ -694,6 +694,7 @@
                     <option value="wiggle">Camera Sweep Dance</option>
                     <option value="drive_square">Run S-Curve Route</option>
                     <option value="horn">Honk Horn Sound</option>
+                    <option value="cucaracha">Play La Cucaracha Melody</option>
                     <option value="avoidance">Quick Obstacle Check Loop</option>
                 </select>
             </div>
@@ -827,16 +828,53 @@ print("S-curve route complete.")`,
             horn: `# Honk the car horn
 try:
     from picarx.music import Music
-    music = Music()
-    # Need sounds path relative or absolute
     import os
-    user = os.popen('echo \${SUDO_USER:-$LOGNAME}').readline().strip()
-    user_home = os.path.expanduser(f"~{user}")
-    sound_path = f"{user_home}/picar-x/sounds/car-double-horn.wav"
+    
+    music = Music()
+    sound_path = os.path.expanduser("~/picar-x/picar-x-lib/sounds/car-double-horn.wav")
     print("Playing sound...")
     music.sound_play_threading(sound_path)
 except Exception as e:
     print(f"Horn failed: {e}")`,
+
+            cucaracha: `# Play the La Cucaracha melody
+try:
+    import pygame
+    import math
+    import struct
+    import time
+
+    print("Initializing speaker/mixer...")
+    pygame.mixer.init(frequency=44100, size=-16, channels=1)
+
+    def play_tone(frequency, duration, volume=0.3):
+        if frequency == 0:
+            time.sleep(duration)
+            return
+        sample_rate = 44100
+        num_samples = int(sample_rate * duration)
+        samples = [int(math.sin(2 * math.pi * frequency * i / sample_rate) * volume * 32767) for i in range(num_samples)]
+        data = struct.pack(f'<{len(samples)}h', *samples)
+        sound = pygame.mixer.Sound(buffer=data)
+        channel = sound.play()
+        while channel.get_busy():
+            time.sleep(0.01)
+
+    print("Playing La Cucaracha melody...")
+    # Notes: C4=261.63, D4=293.66, E4=329.63, F4=349.23, A4=440.00
+    melody = [
+        (261.63, 0.15), (261.63, 0.15), (261.63, 0.15), (349.23, 0.45), (440.00, 0.45),
+        (0, 0.15),
+        (261.63, 0.15), (261.63, 0.15), (261.63, 0.15), (349.23, 0.45), (440.00, 0.45),
+        (0, 0.3),
+        (349.23, 0.3), (349.23, 0.15), (329.63, 0.15), (329.63, 0.15), (293.66, 0.15), (293.66, 0.15), (261.63, 0.6)
+    ]
+
+    for freq, dur in melody:
+        play_tone(freq, dur)
+    print("Melody complete!")
+except Exception as e:
+    print(f"Melody failed: {e}")`,
 
             avoidance: `# Scan front obstacle and make decision
 dist = px.get_distance()
