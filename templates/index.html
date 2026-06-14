@@ -1304,6 +1304,7 @@ else:
             } else if (key === 'c') {
                 steer(0);
             } else if (key === ' ') {
+                e.preventDefault();
                 document.getElementById('ctrl-stop').classList.add('active');
                 drive('stop');
             } else if (key === 'arrowup') {

@@ -117,26 +117,26 @@ watchdog_thread = threading.Thread(target=safety_watchdog, daemon=True)
 watchdog_thread.start()
 
 # Namespace for interactive code execution
+thread_local = threading.local()
+original_sleep = time.sleep
+
 def custom_sleep(seconds):
+    if not getattr(thread_local, "is_script_thread", False):
+        original_sleep(seconds)
+        return
     start_time = time.time()
     while time.time() - start_time < seconds:
         if state.get("abort_scripts", False):
             raise InterruptedError("Script execution aborted.")
-        time.sleep(0.01)
+        original_sleep(0.01)
 
-import types
-custom_time = types.ModuleType("time")
-for attr in dir(time):
-    try:
-        setattr(custom_time, attr, getattr(time, attr))
-    except:
-        pass
-custom_time.sleep = custom_sleep
+# Globally patch time.sleep to use our thread-aware cancelable sleep
+time.sleep = custom_sleep
 
 exec_globals = {
     "px": px,
     "Vilib": Vilib,
-    "time": custom_time,
+    "time": time,
     "sleep": custom_sleep,
     "state": state
 }
@@ -336,6 +336,7 @@ def execute_code():
     if not code.strip():
         return jsonify({"status": "success", "output": ""})
         
+    thread_local.is_script_thread = True
     state["abort_scripts"] = False
         
     # Redirect stdout to capture print statements
