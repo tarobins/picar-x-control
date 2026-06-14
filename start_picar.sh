@@ -12,9 +12,11 @@ ROBOT_HOST="robot"
 ROBOT_DIR="~/picar-x"
 LOCAL_PORT_DASHBOARD=5000
 LOCAL_PORT_API=5001
+LOCAL_PORT_JUNIOR=5002
 LOCAL_PORT_STREAM=9000
 TUNNEL_LOG="${WORKSPACE_DIR}/ssh_tunnel.log"
 SERVER_LOG="${WORKSPACE_DIR}/local_server.log"
+JUNIOR_LOG="${WORKSPACE_DIR}/junior_server.log"
 
 log() {
     echo -e "\033[1;34m[PiCar-X]\033[0m $1"
@@ -40,9 +42,9 @@ check_already_running() {
         if pgrep -f "ssh -o ExitOnForwardFailure=yes -o IPQoS=lowdelay" >/dev/null || pgrep -f "ssh -o ExitOnForwardFailure=yes -L .*${LOCAL_PORT_API}:" >/dev/null || pgrep -f "ssh -L .*${LOCAL_PORT_API}:" >/dev/null; then
             # Check if the remote process is running
             if ssh -o ConnectTimeout=3 -q "$ROBOT_HOST" "pgrep -f server.py" >/dev/null; then
-                # Check if local webserver is running
-                if pgrep -f "local_server.py" >/dev/null; then
-                    return 0 # Yes, it is fully running!
+                # Check if local webservers are running
+                if pgrep -f "local_server.py" >/dev/null && pgrep -f "junior_server.py" >/dev/null; then
+                    return 0 # Yes, they are fully running!
                 fi
             fi
         fi
@@ -51,15 +53,16 @@ check_already_running() {
 }
 
 stop_services() {
-    log "Stopping local webserver..."
+    log "Stopping local webservers (main & junior)..."
     LOCAL_SERVER_PIDS=$(pgrep -f "local_server.py") || true
-    if [ -n "$LOCAL_SERVER_PIDS" ]; then
-        for pid in $LOCAL_SERVER_PIDS; do
+    JUNIOR_SERVER_PIDS=$(pgrep -f "junior_server.py") || true
+    for pid in $LOCAL_SERVER_PIDS $JUNIOR_SERVER_PIDS; do
+        if [ -n "$pid" ]; then
             log "Killing local webserver process $pid..."
             kill "$pid" || true
-        done
-        sleep 0.5
-    fi
+        fi
+    done
+    sleep 0.5
 
     log "Stopping local SSH tunnels..."
     # Find PIDs of any ssh tunnel started by this script
@@ -130,6 +133,10 @@ start_services() {
         error "Local port ${LOCAL_PORT_API} is already in use (API Tunnel)."
         ports_busy=true
     fi
+    if lsof -i :${LOCAL_PORT_JUNIOR} -t >/dev/null 2>&1; then
+        error "Local port ${LOCAL_PORT_JUNIOR} is already in use (Junior Dashboard)."
+        ports_busy=true
+    fi
     if lsof -i :${LOCAL_PORT_STREAM} -t >/dev/null 2>&1; then
         error "Local port ${LOCAL_PORT_STREAM} is already in use (Stream Tunnel)."
         ports_busy=true
@@ -179,6 +186,9 @@ start_services() {
     if [ "$success" = true ]; then
         log "Starting local dashboard webserver (local_server.py)..."
         "${WORKSPACE_DIR}/venv/bin/python3" "${WORKSPACE_DIR}/local_server.py" --daemon --log-file "$SERVER_LOG"
+        
+        log "Starting local junior dashboard webserver (junior_server.py)..."
+        "${WORKSPACE_DIR}/venv/bin/python3" "${WORKSPACE_DIR}/junior_server.py" --daemon --log-file "$JUNIOR_LOG"
         sleep 1.5
 
         if ! pgrep -f "local_server.py" >/dev/null; then
@@ -186,9 +196,15 @@ start_services() {
             cat "$SERVER_LOG"
             exit 1
         fi
+        if ! pgrep -f "junior_server.py" >/dev/null; then
+            error "Junior webserver failed to start. Junior log contents:"
+            cat "$JUNIOR_LOG"
+            exit 1
+        fi
 
-        log "Success! Control Center Dashboard is running."
-        log "Access Dashboard at: http://127.0.0.1:${LOCAL_PORT_DASHBOARD}"
+        log "Success! Control Center Dashboards are running."
+        log "Access Main Dashboard at: http://127.0.0.1:${LOCAL_PORT_DASHBOARD}"
+        log "Access Junior Space Commander at: http://127.0.0.1:${LOCAL_PORT_JUNIOR}"
     else
         error "Failed to connect to the Control Center API. Last curl error: $curl_err"
         log "Fetching last 20 lines of server log from the robot:"
@@ -198,12 +214,19 @@ start_services() {
 }
 
 check_status() {
-    # Check local webserver
+    # Check local webservers
     LOCAL_SERVER_PIDS=$(pgrep -f "local_server.py") || true
     if [ -n "$LOCAL_SERVER_PIDS" ]; then
-        log "Local Webserver: RUNNING (PIDs: $LOCAL_SERVER_PIDS)"
+        log "Local Webserver (Main): RUNNING (PIDs: $LOCAL_SERVER_PIDS)"
     else
-        log "Local Webserver: STOPPED"
+        log "Local Webserver (Main): STOPPED"
+    fi
+
+    JUNIOR_SERVER_PIDS=$(pgrep -f "junior_server.py") || true
+    if [ -n "$JUNIOR_SERVER_PIDS" ]; then
+        log "Local Webserver (Junior): RUNNING (PIDs: $JUNIOR_SERVER_PIDS)"
+    else
+        log "Local Webserver (Junior): STOPPED"
     fi
 
     # Check local tunnels

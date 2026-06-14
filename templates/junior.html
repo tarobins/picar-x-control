@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PiCar-X Space Commander</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Outfit:wght@300;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-deep: #05050e;
+            --bg-card: rgba(10, 10, 30, 0.6);
+            --border-neon: rgba(0, 242, 254, 0.2);
+            --border-glow: rgba(0, 242, 254, 0.4);
+            
+            --neon-blue: #00f2fe;
+            --neon-green: #39ff14;
+            --neon-purple: #bd00ff;
+            --neon-orange: #ff5e00;
+            --neon-red: #ff0055;
+            
+            --text-main: #e0e6ed;
+            --text-muted: #8b9bb4;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            background: radial-gradient(circle at center, #0f1026 0%, var(--bg-deep) 100%);
+            color: var(--text-main);
+            font-family: 'Outfit', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        /* Scanlines overlay for space cockpit vibe */
+        body::before {
+            content: " ";
+            display: block;
+            position: fixed;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 9999;
+            background-size: 100% 4px, 6px 100%;
+            pointer-events: none;
+            opacity: 0.4;
+        }
+
+        header {
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-neon);
+            background: rgba(5, 5, 15, 0.8);
+            backdrop-filter: blur(8px);
+            z-index: 10;
+        }
+
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+        }
+
+        h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            background: linear-gradient(to right, var(--neon-blue), var(--neon-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 15px rgba(0, 242, 254, 0.3);
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 700;
+            border: 1px solid var(--neon-green);
+            padding: 0.4rem 0.8rem;
+            border-radius: 20px;
+            color: var(--neon-green);
+            text-shadow: 0 0 5px var(--neon-green);
+            box-shadow: 0 0 10px rgba(57, 255, 20, 0.1);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--neon-green);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--neon-green);
+        }
+
+        .main-container {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 350px 1fr 380px;
+            gap: 1.5rem;
+            padding: 1.5rem;
+            max-width: 1600px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        @media (max-width: 1200px) {
+            .main-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Cockpit / Glass Cards */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-neon);
+            border-radius: 16px;
+            backdrop-filter: blur(16px);
+            padding: 1.25rem;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: var(--border-glow);
+            box-shadow: 0 8px 32px 0 rgba(0, 242, 254, 0.1);
+        }
+
+        .card-title {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--neon-blue);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border-bottom: 1px solid rgba(0, 242, 254, 0.1);
+            padding-bottom: 0.6rem;
+        }
+
+        /* Center Column: Vision Windshield & Mission Control */
+        .center-col {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .windshield {
+            position: relative;
+            background: #000;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 2px solid var(--border-neon);
+            box-shadow: inset 0 0 30px rgba(0, 242, 254, 0.2);
+            flex: 1;
+            min-height: 350px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .video-feed {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        /* HUD Target Reticle Overlay */
+        .hud-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .reticle {
+            width: 120px;
+            height: 120px;
+            border: 2px dashed var(--neon-blue);
+            border-radius: 50%;
+            opacity: 0.6;
+            position: relative;
+            animation: rotateHUD 20s linear infinite;
+        }
+
+        @keyframes rotateHUD {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .reticle::before, .reticle::after {
+            content: "";
+            position: absolute;
+            background: var(--neon-blue);
+        }
+
+        .reticle::before {
+            top: 50%; left: -10px; right: -10px; height: 1px;
+            margin-top: -0.5px;
+        }
+
+        .reticle::after {
+            left: 50%; top: -10px; bottom: -10px; width: 1px;
+            margin-left: -0.5px;
+        }
+
+        /* Space Command Blocks */
+        .command-toolbox {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.6rem;
+        }
+
+        .block-btn {
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 700;
+            font-size: 0.8rem;
+            color: #fff;
+            padding: 0.8rem 0.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.03);
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            transition: all 0.2s ease;
+        }
+
+        .block-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-forward { border-color: var(--neon-blue); background: rgba(0, 242, 254, 0.05); }
+        .btn-forward:hover { background: var(--neon-blue); color: #000; }
+        
+        .btn-backward { border-color: var(--neon-orange); background: rgba(255, 94, 0, 0.05); }
+        .btn-backward:hover { background: var(--neon-orange); color: #fff; }
+        
+        .btn-left { border-color: var(--neon-purple); background: rgba(189, 0, 255, 0.05); }
+        .btn-left:hover { background: var(--neon-purple); color: #fff; }
+        
+        .btn-right { border-color: var(--neon-green); background: rgba(57, 255, 20, 0.05); }
+        .btn-right:hover { background: var(--neon-green); color: #000; }
+
+        .btn-horn { border-color: #ffeb3b; background: rgba(255, 235, 59, 0.05); }
+        .btn-horn:hover { background: #ffeb3b; color: #000; }
+
+        .btn-song { border-color: #e91e63; background: rgba(233, 30, 99, 0.05); }
+        .btn-song:hover { background: #e91e63; color: #fff; }
+
+        /* Block Workspace Sequence Stack */
+        .workspace {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px dashed var(--border-neon);
+            border-radius: 10px;
+            padding: 0.8rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+            min-height: 250px;
+            overflow-y: auto;
+            max-height: 400px;
+        }
+
+        .workspace-empty {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            text-align: center;
+            padding: 1.5rem;
+        }
+
+        /* Puzzle-like blocks */
+        .logo-block {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.6rem 0.8rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.05);
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 700;
+            font-size: 0.8rem;
+            animation: slideIn 0.2s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .logo-block-label {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .block-input-container {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        .block-input {
+            width: 45px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--border-neon);
+            color: #fff;
+            border-radius: 4px;
+            padding: 0.2rem;
+            text-align: center;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.75rem;
+        }
+
+        .btn-delete-block {
+            background: transparent;
+            border: none;
+            color: var(--neon-red);
+            font-size: 1rem;
+            cursor: pointer;
+            padding: 0 0.3rem;
+            transition: transform 0.2s ease;
+        }
+
+        .btn-delete-block:hover {
+            transform: scale(1.2);
+        }
+
+        /* Styled Action Buttons */
+        .btn-engage {
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 900;
+            font-size: 1.1rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: #000;
+            background: linear-gradient(135deg, var(--neon-green), #00c853);
+            border: none;
+            border-radius: 12px;
+            padding: 1rem;
+            cursor: pointer;
+            box-shadow: 0 0 20px rgba(57, 255, 20, 0.2);
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.6rem;
+        }
+
+        .btn-engage:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 30px rgba(57, 255, 20, 0.4);
+        }
+
+        .btn-stop {
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 900;
+            font-size: 1rem;
+            text-transform: uppercase;
+            color: #fff;
+            background: linear-gradient(135deg, var(--neon-red), #b71c1c);
+            border: none;
+            border-radius: 12px;
+            padding: 0.8rem;
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(255, 0, 85, 0.2);
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn-stop:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 25px rgba(255, 0, 85, 0.4);
+        }
+
+        /* Missions Log Panel */
+        .mission-box {
+            border: 1px solid var(--border-neon);
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 8px;
+            padding: 0.8rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            transition: background 0.3s;
+        }
+
+        .mission-box.active {
+            border-color: var(--neon-blue);
+            background: rgba(0, 242, 254, 0.05);
+        }
+
+        .mission-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .mission-badge {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.65rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 10px;
+            background: rgba(0, 242, 254, 0.1);
+            color: var(--neon-blue);
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .mission-title {
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        .mission-desc {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            line-height: 1.35;
+        }
+
+        .btn-mission-load {
+            align-self: flex-start;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.7rem;
+            font-weight: 700;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--neon-blue);
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-mission-load:hover {
+            background: var(--neon-blue);
+            color: #000;
+        }
+
+        /* Sound board elements */
+        .soundboard-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.5rem;
+        }
+
+        .btn-sound {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 0.5rem 0.2rem;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            color: var(--text-muted);
+            cursor: pointer;
+            text-align: center;
+        }
+
+        .btn-sound:hover {
+            border-color: var(--neon-blue);
+            color: var(--neon-blue);
+            background: rgba(0, 242, 254, 0.05);
+        }
+
+        /* Telemetry cockpit gauges */
+        .telemetry-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 0.8rem;
+        }
+
+        .gauge-box {
+            flex: 1;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid var(--border-neon);
+            border-radius: 10px;
+            padding: 0.6rem;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .gauge-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-bottom: 0.2rem;
+        }
+
+        .gauge-val {
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 900;
+            font-size: 1.1rem;
+            color: var(--neon-blue);
+        }
+
+        /* HUD terminal output */
+        .hud-log {
+            background: rgba(0,0,0,0.5);
+            border: 1px solid var(--border-neon);
+            border-radius: 8px;
+            padding: 0.5rem 0.8rem;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.75rem;
+            color: var(--neon-green);
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-container">
+            <h1>PiCar-X Space Commander</h1>
+        </div>
+        <div class="status-badge">
+            <div class="status-dot"></div>
+            <span>STABLE LINK</span>
+        </div>
+    </header>
+
+    <div class="main-container">
+        
+        <!-- LEFT: Command Block Builder -->
+        <div class="card">
+            <div class="card-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Launch Sequence
+            </div>
+
+            <!-- Command Toolbox -->
+            <div class="command-toolbox">
+                <button class="block-btn btn-forward" onclick="addCommandBlock('fd')">⬆️ FORWARD</button>
+                <button class="block-btn btn-backward" onclick="addCommandBlock('bk')">⬇️ REVERSE</button>
+                <button class="block-btn btn-left" onclick="addCommandBlock('lt')">↩️ STEER L</button>
+                <button class="block-btn btn-right" onclick="addCommandBlock('rt')">↪️ STEER R</button>
+                <button class="block-btn btn-horn" onclick="addCommandBlock('horn')">🎺 HORN</button>
+                <button class="block-btn btn-song" onclick="addCommandBlock('song')">🎵 SONG</button>
+            </div>
+
+            <!-- Workspace Stack -->
+            <div class="workspace" id="logo-workspace">
+                <div class="workspace-empty" id="workspace-empty-msg">
+                    Click commands above to build your flight path!
+                </div>
+            </div>
+
+            <button class="btn-engage" id="btn-engage">
+                🚀 ENGAGE LAUNCH!
+            </button>
+            
+            <button class="btn-stop" id="btn-stop-all">
+                🛑 EMERGENCY STOP
+            </button>
+        </div>
+
+        <!-- CENTER: Video & Playback Controls -->
+        <div class="center-col">
+            <div class="windshield">
+                <img id="mjpg-stream" class="video-feed" src="" alt="MJPEG Video Stream">
+                <div class="hud-overlay">
+                    <div class="reticle"></div>
+                </div>
+            </div>
+
+            <div class="hud-log" id="hud-log">
+                // System ready. Ready for commander input...
+            </div>
+            
+            <!-- Quick Sound Board & Telemetry -->
+            <div class="card" style="flex-direction: row; justify-content: space-between; align-items: center;">
+                <div style="flex: 1; display: flex; flex-direction: column; gap: 0.5rem;">
+                    <div style="font-family: 'Orbitron', sans-serif; font-size: 0.75rem; color: var(--neon-blue); font-weight: 700;">Soundboard</div>
+                    <div class="soundboard-grid">
+                        <button class="btn-sound" onclick="playMelody('horn')">🎺 Horn</button>
+                        <button class="btn-sound" onclick="playMelody('song')">🎵 Song</button>
+                        <button class="btn-sound" onclick="playMelody('wiggle')">🕺 Dance</button>
+                    </div>
+                </div>
+
+                <div style="flex: 1; display: flex; flex-direction: column; gap: 0.5rem;">
+                    <div style="font-family: 'Orbitron', sans-serif; font-size: 0.75rem; color: var(--neon-blue); font-weight: 700;">Telemetry</div>
+                    <div class="telemetry-row">
+                        <div class="gauge-box">
+                            <span class="gauge-label">Range</span>
+                            <span class="gauge-val" id="radar-val">--</span>
+                        </div>
+                        <div class="gauge-box">
+                            <span class="gauge-label">CPU</span>
+                            <span class="gauge-val" id="cpu-val">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT: Mission challenges -->
+        <div class="card">
+            <div class="card-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                Commander Missions
+            </div>
+
+            <!-- Mission 1 -->
+            <div class="mission-box" id="mission-1">
+                <div class="mission-header">
+                    <span class="mission-title">Mission 1: The Gate Escape</span>
+                    <span class="mission-badge">Level 1</span>
+                </div>
+                <div class="mission-desc">
+                    Program the space rover to drive forward 5 steps, turn right 30°, then drive forward 3 steps to escape through the hangar gate!
+                </div>
+                <button class="btn-mission-load" onclick="loadMission(1)">Load Mission Template</button>
+            </div>
+
+            <!-- Mission 2 -->
+            <div class="mission-box" id="mission-2">
+                <div class="mission-header">
+                    <span class="mission-title">Mission 2: Hangar Patrol</span>
+                    <span class="mission-badge">Level 2</span>
+                </div>
+                <div class="mission-desc">
+                    Program the rover to run a square path patrol: Drive forward, steer right 30°, drive a bit to make the corner, straighten, and repeat 4 times!
+                </div>
+                <button class="btn-mission-load" onclick="loadMission(2)">Load Mission Template</button>
+            </div>
+
+            <!-- Mission 3 -->
+            <div class="mission-box" id="mission-3">
+                <div class="mission-header">
+                    <span class="mission-title">Mission 3: Hangar Celebration</span>
+                    <span class="mission-badge">Level 3</span>
+                </div>
+                <div class="mission-desc">
+                    Create a victory dance: drive forward 2 steps, honk the horn, play the theme song, and reverse 2 steps back!
+                </div>
+                <button class="btn-mission-load" onclick="loadMission(3)">Load Mission Template</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const hostIp = window.location.hostname;
+        const videoStream = document.getElementById('mjpg-stream');
+        videoStream.src = `http://${hostIp}:9000/mjpg`;
+
+        const workspace = document.getElementById('logo-workspace');
+        const emptyMsg = document.getElementById('workspace-empty-msg');
+        const hudLog = document.getElementById('hud-log');
+        const btnEngage = document.getElementById('btn-engage');
+        const btnStopAll = document.getElementById('btn-stop-all');
+
+        let sequence = [];
+
+        function updateWorkspaceUI() {
+            if (sequence.length === 0) {
+                emptyMsg.style.display = 'flex';
+            } else {
+                emptyMsg.style.display = 'none';
+            }
+        }
+
+        function addCommandBlock(type, val = null) {
+            let defaultVal = 2;
+            let label = "";
+            let min = 1, max = 10;
+            
+            if (type === 'fd') {
+                label = "🚀 FORWARD";
+                defaultVal = val !== null ? val : 2;
+            } else if (type === 'bk') {
+                label = "🏎️ REVERSE";
+                defaultVal = val !== null ? val : 2;
+            } else if (type === 'lt') {
+                label = "↩️ STEER LEFT";
+                defaultVal = val !== null ? val : 15;
+                min = 5; max = 30;
+            } else if (type === 'rt') {
+                label = "↪️ STEER RIGHT";
+                defaultVal = val !== null ? val : 15;
+                min = 5; max = 30;
+            } else if (type === 'horn') {
+                label = "🎺 HORN";
+                defaultVal = val !== null ? val : 1;
+            } else if (type === 'song') {
+                label = "🎵 SONG";
+                defaultVal = val !== null ? val : 1;
+            }
+
+            const id = Date.now() + Math.random().toString(36).substr(2, 5);
+            
+            const blockHtml = `
+                <div class="logo-block" id="block-${id}" data-id="${id}" data-type="${type}">
+                    <div class="logo-block-label">${label}</div>
+                    <div class="block-input-container">
+                        ${type !== 'horn' && type !== 'song' ? `
+                            <input type="number" class="block-input" min="${min}" max="${max}" value="${defaultVal}" onchange="updateBlockValue('${id}', this.value)">
+                            <span style="font-size:0.75rem; color:var(--text-muted)">${type === 'fd' || type === 'bk' ? 'steps' : 'deg'}</span>
+                        ` : ''}
+                        <button class="btn-delete-block" onclick="deleteBlock('${id}')">✕</button>
+                    </div>
+                </div>
+            `;
+            
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = blockHtml;
+            const blockEl = tempDiv.firstElementChild;
+            workspace.appendChild(blockEl);
+            
+            sequence.push({
+                id: id,
+                type: type,
+                value: defaultVal
+            });
+            
+            updateWorkspaceUI();
+            hudLog.textContent = `// Added ${type.toUpperCase()} command to flight path.`;
+        }
+
+        function updateBlockValue(id, value) {
+            const index = sequence.findIndex(b => b.id === id);
+            if (index !== -1) {
+                sequence[index].value = parseFloat(value);
+            }
+        }
+
+        function deleteBlock(id) {
+            const element = document.getElementById(`block-${id}`);
+            if (element) {
+                element.remove();
+            }
+            sequence = sequence.filter(b => b.id !== id);
+            updateWorkspaceUI();
+            hudLog.textContent = `// Removed block.`;
+        }
+
+        function clearWorkspace() {
+            workspace.innerHTML = "";
+            workspace.appendChild(emptyMsg);
+            sequence = [];
+            updateWorkspaceUI();
+        }
+
+        // LOGO parser to Python code translation
+        function generatePythonCode() {
+            let pythonLines = [
+                'import time',
+                'try:',
+                '    print("Sequence initiated.")',
+                '    px.stop()',
+                '    time.sleep(0.1)',
+                '    steer = 0'
+            ];
+            
+            for (let block of sequence) {
+                const type = block.type;
+                const val = block.value;
+                
+                if (type === 'fd') {
+                    pythonLines.push(`    # fd ${val}`);
+                    pythonLines.push(`    px.set_dir_servo_angle(steer)`);
+                    pythonLines.push(`    px.forward(40)`);
+                    pythonLines.push(`    time.sleep(${val} * 0.1560)`);
+                    pythonLines.push(`    px.stop()`);
+                    pythonLines.push(`    time.sleep(0.1)`);
+                } else if (type === 'bk') {
+                    pythonLines.push(`    # bk ${val}`);
+                    pythonLines.push(`    px.set_dir_servo_angle(steer)`);
+                    pythonLines.push(`    px.backward(40)`);
+                    pythonLines.push(`    time.sleep(${val} * 0.1560)`);
+                    pythonLines.push(`    px.stop()`);
+                    pythonLines.push(`    time.sleep(0.1)`);
+                } else if (type === 'rt') {
+                    pythonLines.push(`    # rt ${val}`);
+                    pythonLines.push(`    steer = max(-30, min(30, steer + ${val}))`);
+                    pythonLines.push(`    px.set_dir_servo_angle(steer)`);
+                    pythonLines.push(`    time.sleep(0.15)`);
+                } else if (type === 'lt') {
+                    pythonLines.push(`    # lt ${val}`);
+                    pythonLines.push(`    steer = max(-30, min(30, steer - ${val}))`);
+                    pythonLines.push(`    px.set_dir_servo_angle(steer)`);
+                    pythonLines.push(`    time.sleep(0.15)`);
+                } else if (type === 'horn') {
+                    pythonLines.push(`    # horn`);
+                    pythonLines.push(`    from picarx.music import Music; music = Music()`);
+                    pythonLines.push(`    import os`);
+                    pythonLines.push(`    sound_path = os.path.expanduser("~/picar-x/picar-x-lib/sounds/car-double-horn.wav")`);
+                    pythonLines.push(`    music.sound_play_threading(sound_path)`);
+                    pythonLines.push(`    time.sleep(1.0)`);
+                } else if (type === 'song') {
+                    pythonLines.push(`    # song`);
+                    pythonLines.push(`    import pygame, math, struct`);
+                    pythonLines.push(`    pygame.mixer.init(frequency=44100, size=-16, channels=1)`);
+                    pythonLines.push(`    def play_tone(frequency, duration, volume=0.3):`);
+                    pythonLines.push(`        if frequency == 0: time.sleep(duration); return`);
+                    pythonLines.push(`        sample_rate = 44100`);
+                    pythonLines.push(`        num_samples = int(sample_rate * duration)`);
+                    pythonLines.push(`        samples = [int(math.sin(2 * math.pi * frequency * i / sample_rate) * volume * 32767) for i in range(num_samples)]`);
+                    pythonLines.push(`        data = struct.pack(f'<{len(samples)}h', *samples)`);
+                    pythonLines.push(`        sound = pygame.mixer.Sound(buffer=data)`);
+                    pythonLines.push(`        channel = sound.play()`);
+                    pythonLines.push(`        while channel.get_busy(): time.sleep(0.01)`);
+                    pythonLines.push(`    melody = [`);
+                    pythonLines.push(`        (261.63, 0.15), (261.63, 0.15), (261.63, 0.15), (349.23, 0.45), (440.00, 0.45),`);
+                    pythonLines.push(`        (0, 0.15),`);
+                    pythonLines.push(`        (261.63, 0.15), (261.63, 0.15), (261.63, 0.15), (349.23, 0.45), (440.00, 0.45),`);
+                    pythonLines.push(`        (0, 0.3),`);
+                    pythonLines.push(`        (349.23, 0.3), (349.23, 0.15), (329.63, 0.15), (329.63, 0.15), (293.66, 0.15), (293.66, 0.15), (261.63, 0.6)`);
+                    pythonLines.push(`    ]`);
+                    pythonLines.push(`    for freq, dur in melody: play_tone(freq, dur)`);
+                }
+            }
+            
+            pythonLines.push('    px.set_dir_servo_angle(0)');
+            pythonLines.push('    px.stop()');
+            pythonLines.push('    print("Launch sequence complete.")');
+            pythonLines.push('except Exception as e:');
+            pythonLines.push('    px.stop()');
+            pythonLines.push('    px.set_dir_servo_angle(0)');
+            pythonLines.push('    print(f"Aborted: {e}")');
+            
+            return pythonLines.join('\n');
+        }
+
+        btnEngage.addEventListener('click', () => {
+            if (sequence.length === 0) {
+                hudLog.textContent = "// ERROR: Flight path workspace is empty!";
+                return;
+            }
+            
+            const pythonCode = generatePythonCode();
+            
+            btnEngage.disabled = true;
+            btnEngage.textContent = "🚀 LEAVING HANGAR...";
+            hudLog.textContent = "// TRANSMITTING FLIGHT SEQUENCES...";
+            
+            fetch('/api/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: pythonCode })
+            })
+            .then(res => res.json())
+            .then(data => {
+                btnEngage.disabled = false;
+                btnEngage.innerHTML = `🚀 ENGAGE LAUNCH!`;
+                
+                if (data.status === 'success') {
+                    hudLog.textContent = "// MISSION SUCCESS! Flight path completed.";
+                } else {
+                    hudLog.textContent = `// ABORT: ${data.output}`;
+                }
+            })
+            .catch(err => {
+                btnEngage.disabled = false;
+                btnEngage.innerHTML = `🚀 ENGAGE LAUNCH!`;
+                hudLog.textContent = "// ERROR: Link lost to Space Rover.";
+                console.error(err);
+            });
+        });
+
+        // Emergency Stop All
+        btnStopAll.addEventListener('click', () => {
+            hudLog.textContent = "// EMERGENCY SHUTDOWN SENT!";
+            fetch('/api/move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'stop' })
+            })
+            .then(res => res.json())
+            .catch(err => console.error(err));
+        });
+
+        // Load Mission Templates
+        function loadMission(id) {
+            clearWorkspace();
+            
+            // Highlight mission box
+            document.querySelectorAll('.mission-box').forEach(b => b.classList.remove('active'));
+            document.getElementById(`mission-${id}`).classList.add('active');
+
+            if (id === 1) {
+                addCommandBlock('fd', 5);
+                addCommandBlock('rt', 30);
+                addCommandBlock('fd', 3);
+                hudLog.textContent = "// Mission 1 sequence loaded into launch bay.";
+            } else if (id === 2) {
+                for (let i = 0; i < 4; i++) {
+                    addCommandBlock('fd', 3);
+                    addCommandBlock('rt', 30);
+                    addCommandBlock('fd', 2.5);
+                    addCommandBlock('lt', 30);
+                }
+                hudLog.textContent = "// Mission 2 patrol loop loaded into launch bay.";
+            } else if (id === 3) {
+                addCommandBlock('fd', 2);
+                addCommandBlock('horn');
+                addCommandBlock('song');
+                addCommandBlock('bk', 2);
+                hudLog.textContent = "// Mission 3 celebration loaded into launch bay.";
+            }
+        }
+
+        // Quick Sound Board / Melody Trig
+        function playMelody(type) {
+            hudLog.textContent = `// Playing ${type.toUpperCase()} effect...`;
+            let code = "";
+            
+            if (type === 'horn') {
+                code = `
+from picarx.music import Music
+import os, time
+music = Music()
+sound_path = os.path.expanduser("~/picar-x/picar-x-lib/sounds/car-double-horn.wav")
+music.sound_play_threading(sound_path)
+`;
+            } else if (type === 'song') {
+                code = `
+import pygame, math, struct, time
+pygame.mixer.init(frequency=44100, size=-16, channels=1)
+def play_tone(frequency, duration, volume=0.3):
+    if frequency == 0: time.sleep(duration); return
+    sample_rate = 44100
+    num_samples = int(sample_rate * duration)
+    samples = [int(math.sin(2 * math.pi * frequency * i / sample_rate) * volume * 32767) for i in range(num_samples)]
+    data = struct.pack(f'<{len(samples)}h', *samples)
+    sound = pygame.mixer.Sound(buffer=data)
+    channel = sound.play()
+    while channel.get_busy(): time.sleep(0.01)
+melody = [
+    (261.63, 0.15), (261.63, 0.15), (261.63, 0.15), (349.23, 0.45), (440.00, 0.45),
+    (0, 0.15),
+    (261.63, 0.15), (261.63, 0.15), (261.63, 0.15), (349.23, 0.45), (440.00, 0.45),
+    (0, 0.3),
+    (349.23, 0.3), (349.23, 0.15), (329.63, 0.15), (329.63, 0.15), (293.66, 0.15), (293.66, 0.15), (261.63, 0.6)
+]
+for freq, dur in melody: play_tone(freq, dur)
+`;
+            } else if (type === 'wiggle') {
+                code = `
+import time
+for i in range(3):
+    px.set_dir_servo_angle(20)
+    time.sleep(0.2)
+    px.set_dir_servo_angle(-20)
+    time.sleep(0.2)
+px.set_dir_servo_angle(0)
+`;
+            }
+
+            fetch('/api/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: code })
+            })
+            .then(res => res.json())
+            .catch(err => console.error(err));
+        }
+
+        // Telemetry Polling Loop
+        function pollTelemetry() {
+            fetch('/api/telemetry')
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    const t = data.telemetry;
+                    document.getElementById('radar-val').textContent = t.distance > 0 ? `${t.distance}` : '0';
+                    document.getElementById('cpu-val').textContent = `${t.cpu_usage}%`;
+                }
+            })
+            .catch(err => console.error(err));
+        }
+        setInterval(pollTelemetry, 1500);
+    </script>
+</body>
+</html>
