@@ -763,6 +763,16 @@ px.stop()
             </div>
             
             <div class="control-group">
+                <label class="slider-label" style="margin-bottom: 0.2rem;">LOGO Presets</label>
+                <select class="select-preset" id="logo-presets">
+                    <option value="">-- Choose a LOGO Preset --</option>
+                    <option value="star">Star of David (15cm lines)</option>
+                    <option value="square">Drive in a Square</option>
+                    <option value="zigzag">Zig-Zag Path</option>
+                </select>
+            </div>
+
+            <div class="control-group">
                 <label class="slider-label" style="margin-bottom: 0.2rem;">Enter LOGO Commands (fd, bk, lt, rt)</label>
                 <textarea class="console-editor" id="logo-editor" style="height: 120px;" spellcheck="false" placeholder="fd 2&#10;rt 15&#10;fd 3&#10;lt 15&#10;bk 1">fd 2
 rt 15
@@ -829,6 +839,7 @@ bk 1</textarea>
         const gimbalMarker = document.getElementById('gimbal-marker');
         const btnRunLogo = document.getElementById('btn-run-logo');
         const logoEditor = document.getElementById('logo-editor');
+        const logoPresetsSelect = document.getElementById('logo-presets');
 
         // Preset scripts
         const presets = {
@@ -1800,6 +1811,76 @@ else:
                 appendTerminal("HTTP connection error to script server.", "term-err");
                 console.error(err);
             });
+        });
+
+        // LOGO Presets Definitions
+        const logoPresets = {
+            star: `# Star of David (two overlapping triangles)
+# Triangle 1
+fd 3
+rt 30
+fd 3.3
+lt 30
+fd 3
+rt 30
+fd 3.3
+lt 30
+fd 3
+rt 30
+fd 3.3
+lt 30
+
+# Reposition to start Triangle 2
+rt 30
+fd 1.6
+lt 30
+fd 1
+
+# Triangle 2
+fd 3
+rt 30
+fd 3.3
+lt 30
+fd 3
+rt 30
+fd 3.3
+lt 30
+fd 3
+rt 30
+fd 3.3
+lt 30`,
+            square: `# Drive in a Square
+fd 3
+rt 30
+fd 2.5
+lt 30
+fd 3
+rt 30
+fd 2.5
+lt 30
+fd 3
+rt 30
+fd 2.5
+lt 30
+fd 3
+rt 30
+fd 2.5
+lt 30`,
+            zigzag: `# Zig-Zag Path
+fd 3
+rt 15
+fd 2
+lt 30
+fd 2
+rt 15
+fd 3`
+        };
+
+        logoPresetsSelect.addEventListener('change', (e) => {
+            const val = e.target.value;
+            if (val && logoPresets[val]) {
+                logoEditor.value = logoPresets[val];
+            }
         });
 
         // Initialize Page
