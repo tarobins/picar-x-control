@@ -127,6 +127,8 @@ def custom_sleep(seconds):
     start_time = time.time()
     while time.time() - start_time < seconds:
         if state.get("abort_scripts", False):
+            # Disable script thread mode before raising so cleanup calls to time.sleep don't raise again
+            thread_local.is_script_thread = False
             raise InterruptedError("Script execution aborted.")
         original_sleep(0.01)
 
@@ -349,11 +351,15 @@ def execute_code():
     try:
         # We use exec to run the code within our global namespace
         exec(code, exec_globals)
+    except InterruptedError:
+        success = True
+        print("Script execution aborted by user.")
     except Exception as e:
         success = False
         import traceback
         traceback.print_exc(file=sys.stdout)
     finally:
+        thread_local.is_script_thread = False
         sys.stdout = old_stdout
         
     output = redirected_output.getvalue()
