@@ -117,11 +117,27 @@ watchdog_thread = threading.Thread(target=safety_watchdog, daemon=True)
 watchdog_thread.start()
 
 # Namespace for interactive code execution
+def custom_sleep(seconds):
+    start_time = time.time()
+    while time.time() - start_time < seconds:
+        if state.get("abort_scripts", False):
+            raise InterruptedError("Script execution aborted.")
+        time.sleep(0.01)
+
+import types
+custom_time = types.ModuleType("time")
+for attr in dir(time):
+    try:
+        setattr(custom_time, attr, getattr(time, attr))
+    except:
+        pass
+custom_time.sleep = custom_sleep
+
 exec_globals = {
     "px": px,
     "Vilib": Vilib,
-    "time": time,
-    "sleep": time.sleep,
+    "time": custom_time,
+    "sleep": custom_sleep,
     "state": state
 }
 
@@ -204,6 +220,7 @@ def move_car():
             px.backward(speed)
         
     elif action == "stop":
+        state["abort_scripts"] = True
         with i2c_lock:
             px.stop()
         state["speed"] = 0
@@ -318,6 +335,8 @@ def execute_code():
     
     if not code.strip():
         return jsonify({"status": "success", "output": ""})
+        
+    state["abort_scripts"] = False
         
     # Redirect stdout to capture print statements
     old_stdout = sys.stdout
