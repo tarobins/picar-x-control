@@ -1724,14 +1724,14 @@ else:
                     pythonLines.push(`    # fd ${val}`);
                     pythonLines.push(`    px.set_dir_servo_angle(steer)`);
                     pythonLines.push(`    px.forward(40)`);
-                    pythonLines.push(`    time.sleep(${val} * 0.15)`);
+                    pythonLines.push(`    time.sleep(${val} * 0.2327)`);
                     pythonLines.push(`    px.stop()`);
                     pythonLines.push(`    time.sleep(0.1)`);
                 } else if (cmd === 'bk') {
                     pythonLines.push(`    # bk ${val}`);
                     pythonLines.push(`    px.set_dir_servo_angle(steer)`);
                     pythonLines.push(`    px.backward(40)`);
-                    pythonLines.push(`    time.sleep(${val} * 0.15)`);
+                    pythonLines.push(`    time.sleep(${val} * 0.2327)`);
                     pythonLines.push(`    px.stop()`);
                     pythonLines.push(`    time.sleep(0.1)`);
                 } else if (cmd === 'rt') {
