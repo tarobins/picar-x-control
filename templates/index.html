@@ -489,6 +489,10 @@
             background: var(--accent-warning);
         }
 
+        .diag-bar-fill.green {
+            background: var(--accent-success);
+        }
+
         /* Keyboard Help */
         .kbd-guide {
             font-size: 0.8rem;
@@ -760,6 +764,16 @@ px.stop()
                 </div>
                 <div class="diag-bar-bg">
                     <div class="diag-bar-fill purple" id="bar-mem"></div>
+                </div>
+            </div>
+
+            <div class="diag-row">
+                <div class="diag-label">
+                    <span>Battery Voltage</span>
+                    <span id="diag-voltage">0.0V</span>
+                </div>
+                <div class="diag-bar-bg">
+                    <div class="diag-bar-fill green" id="bar-voltage"></div>
                 </div>
             </div>
         </div>
@@ -1774,6 +1788,13 @@ else:
             if (tel.memory_usage !== undefined) {
                 document.getElementById('diag-mem').textContent = `${tel.memory_usage}%`;
                 document.getElementById('bar-mem').style.width = `${tel.memory_usage}%`;
+            }
+
+            if (tel.battery_voltage !== undefined && tel.battery_voltage > 0) {
+                document.getElementById('diag-voltage').textContent = `${tel.battery_voltage.toFixed(2)}V`;
+                // Scale battery percentage from 6.2V to 8.4V
+                const pct = Math.min(100, Math.max(0, ((tel.battery_voltage - 6.2) / 2.2) * 100));
+                document.getElementById('bar-voltage').style.width = `${pct}%`;
             }
         }
 

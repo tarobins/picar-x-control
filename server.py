@@ -69,7 +69,8 @@ state = {
 sensor_data = {
     "distance": -1.0,
     "camera_distance": -1.0,
-    "grayscale": [0, 0, 0]
+    "grayscale": [0, 0, 0],
+    "battery_voltage": -1.0
 }
 
 # Safety Watchdog variables
@@ -92,9 +93,24 @@ def get_safety_thresholds(current_speed):
 
 def safety_watchdog():
     global last_move_time, state, sensor_data
+    idle_voltage = None
+    consecutive_sags = 0
+    STALL_VOLTAGE_SAG = 0.25 # in Volts
+    
     while True:
         time.sleep(0.05) # Check every 50ms for collision / heartbeat
         if px:
+            # Read battery voltage from A4
+            try:
+                from robot_hat import ADC
+                global _watchdog_battery_adc
+                if '_watchdog_battery_adc' not in globals():
+                    _watchdog_battery_adc = ADC('A4')
+                raw_v = _watchdog_battery_adc.read_voltage()
+                voltage = round(raw_v * 3.0, 2)
+            except Exception as e:
+                voltage = -1.0
+
             # 1. Read sensors under lock
             try:
                 with i2c_lock:
@@ -128,6 +144,33 @@ def safety_watchdog():
             sensor_data["distance"] = distance
             sensor_data["camera_distance"] = cam_dist
             sensor_data["grayscale"] = grayscale
+            sensor_data["battery_voltage"] = voltage
+
+            # Stall detection logic
+            if voltage > 0:
+                if state["speed"] == 0:
+                    if idle_voltage is None:
+                        idle_voltage = voltage
+                    else:
+                        idle_voltage = 0.9 * idle_voltage + 0.1 * voltage
+                    consecutive_sags = 0
+                else:
+                    if idle_voltage is not None:
+                        sag = idle_voltage - voltage
+                        if sag > STALL_VOLTAGE_SAG:
+                            consecutive_sags += 1
+                        else:
+                            consecutive_sags = max(0, consecutive_sags - 1)
+                        
+                        if consecutive_sags >= 5: # 250ms of sustained sag
+                            print(f"Watchdog Stall Protection: Stall detected! Sag={sag:.2f}V (Idle: {idle_voltage:.2f}V, Current: {voltage:.2f}V). Stopping!")
+                            with i2c_lock:
+                                px.stop()
+                            state["speed"] = 0
+                            state["direction"] = "stop"
+                            if explorer.state == "EXPLORING":
+                                explorer.stop_exploration()
+                            consecutive_sags = 0
 
             # Check cliff
             cliff_triggered = False
@@ -238,7 +281,7 @@ def move_car():
     if not px:
         return jsonify({"status": "error", "message": "Picarx not initialized"}), 500
     
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     action = data.get("action", "stop")
     speed = int(data.get("speed", state["speed"]))
     steering_angle = int(data.get("steering_angle", state["steering_angle"]))
@@ -356,7 +399,7 @@ def control_camera():
     if not px:
         return jsonify({"status": "error", "message": "Picarx not initialized"}), 500
 
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     pan = data.get("pan")
     tilt = data.get("tilt")
     
@@ -387,7 +430,7 @@ def control_camera():
 @app.route('/api/camera_switch', methods=['POST'])
 def camera_switch():
     global camera_started
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     activate = data.get("active", True)
     
     try:
@@ -431,6 +474,7 @@ def get_telemetry():
             "distance": sensor_data["distance"],
             "camera_distance": sensor_data["camera_distance"],
             "grayscale": sensor_data["grayscale"],
+            "battery_voltage": sensor_data["battery_voltage"],
             "cpu_temp": cpu_temp,
             "cpu_usage": cpu_usage,
             "memory_usage": mem_usage
@@ -439,7 +483,7 @@ def get_telemetry():
 
 @app.route('/api/execute', methods=['POST'])
 def execute_code():
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     code = data.get("code", "")
     
     if not code.strip():
@@ -503,7 +547,8 @@ def calibrate_steering():
     explorer.state = "CALIBRATING"
     with i2c_lock:
         px.stop()
-    angle = int(request.json.get('angle', 0))
+    data = request.get_json(silent=True) or {}
+    angle = int(data.get('angle', 0))
     with i2c_lock:
         px.set_dir_servo_angle(angle)
     return jsonify({"status": "steering_adjusted", "angle": angle})
@@ -518,7 +563,8 @@ def read_sensors_for_calibration():
 
 @app.route('/api/calibrate/camera', methods=['POST'])
 def calibrate_camera():
-    target_dist = float(request.json.get('target_distance', 20.0))
+    data = request.get_json(silent=True) or {}
+    target_dist = float(data.get('target_distance', 20.0))
     
     # Read frame from Vilib if available
     from vilib import Vilib
@@ -548,7 +594,7 @@ def calibrate_camera():
 
 @app.route('/api/calibrate/save', methods=['POST'])
 def save_calibration():
-    config_payload = request.json
+    config_payload = request.get_json(silent=True) or {}
     os.makedirs("data", exist_ok=True)
     with open("data/calibration_config.json", "w") as f:
         json.dump(config_payload, f)

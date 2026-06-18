@@ -23,7 +23,7 @@ def get_status():
 @app.route('/api/move', methods=['POST'])
 def move_car():
     t_recv = time.time() * 1000.0
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     action = data.get("action", "stop")
     speed = data.get("speed", 50)
     steering_angle = data.get("steering_angle", 0)
@@ -42,7 +42,7 @@ def move_car():
 @app.route('/api/camera', methods=['POST'])
 def control_camera():
     t_recv = time.time() * 1000.0
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     pan = data.get("pan")
     tilt = data.get("tilt")
     
@@ -59,7 +59,7 @@ def control_camera():
 
 @app.route('/api/trace', methods=['POST'])
 def log_trace():
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'latency_trace.log')
     try:
         with open(log_path, 'a') as f:
@@ -71,7 +71,7 @@ def log_trace():
 
 @app.route('/api/camera_switch', methods=['POST'])
 def camera_switch():
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     activate = data.get("active", True)
     try:
         r = requests.post(f"{picar_client.BASE_URL}/api/camera_switch", json={"active": activate}, timeout=3)
@@ -90,7 +90,7 @@ def get_telemetry():
 
 @app.route('/api/execute', methods=['POST'])
 def execute_code():
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     code = data.get("code", "")
     res = picar_client.run_remote(code)
     if res:
@@ -108,7 +108,7 @@ def get_map_telemetry():
 @app.route('/api/explore/start', methods=['POST'])
 def start_explore():
     try:
-        r = requests.post(f"{picar_client.BASE_URL}/api/explore/start", json=request.json or {}, timeout=3)
+        r = requests.post(f"{picar_client.BASE_URL}/api/explore/start", json=request.get_json(silent=True) or {}, timeout=3)
         return jsonify(r.json()), r.status_code
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 503
@@ -116,7 +116,7 @@ def start_explore():
 @app.route('/api/explore/stop', methods=['POST'])
 def stop_explore():
     try:
-        r = requests.post(f"{picar_client.BASE_URL}/api/explore/stop", json=request.json or {}, timeout=3)
+        r = requests.post(f"{picar_client.BASE_URL}/api/explore/stop", json=request.get_json(silent=True) or {}, timeout=3)
         return jsonify(r.json()), r.status_code
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 503
@@ -124,7 +124,7 @@ def stop_explore():
 @app.route('/api/calibrate/steering', methods=['POST'])
 def calibrate_steering():
     try:
-        r = requests.post(f"{picar_client.BASE_URL}/api/calibrate/steering", json=request.json or {}, timeout=3)
+        r = requests.post(f"{picar_client.BASE_URL}/api/calibrate/steering", json=request.get_json(silent=True) or {}, timeout=3)
         return jsonify(r.json()), r.status_code
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 503
@@ -140,7 +140,7 @@ def read_sensors_for_calibration():
 @app.route('/api/calibrate/camera', methods=['POST'])
 def calibrate_camera():
     try:
-        r = requests.post(f"{picar_client.BASE_URL}/api/calibrate/camera", json=request.json or {}, timeout=3)
+        r = requests.post(f"{picar_client.BASE_URL}/api/calibrate/camera", json=request.get_json(silent=True) or {}, timeout=3)
         return jsonify(r.json()), r.status_code
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 503
@@ -148,7 +148,7 @@ def calibrate_camera():
 @app.route('/api/calibrate/save', methods=['POST'])
 def save_calibration():
     try:
-        r = requests.post(f"{picar_client.BASE_URL}/api/calibrate/save", json=request.json or {}, timeout=3)
+        r = requests.post(f"{picar_client.BASE_URL}/api/calibrate/save", json=request.get_json(silent=True) or {}, timeout=3)
         return jsonify(r.json()), r.status_code
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 503
