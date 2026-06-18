@@ -40,6 +40,11 @@ explorer = AutonomousExplorer(grid, vision, px, i2c_lock)
 # Initialize Vilib camera streaming (enabled by default)
 camera_started = False
 try:
+    try:
+        with i2c_lock:
+            Vilib.picam2.close()
+    except Exception as e:
+        pass
     from picamera2 import Picamera2
     with i2c_lock:
         Vilib.picam2 = Picamera2()
