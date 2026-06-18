@@ -129,11 +129,29 @@ def safety_watchdog():
             sensor_data["camera_distance"] = cam_dist
             sensor_data["grayscale"] = grayscale
 
+            # Check cliff
+            cliff_triggered = False
+            if grayscale and all(val > explorer.cliff_threshold for val in grayscale):
+                cliff_triggered = True
+
+            # 2. Cliff detection override
+            if cliff_triggered and state["direction"] != "stop":
+                print(f"Watchdog Cliff Override: Cliff detected! Halting and backing away.")
+                with i2c_lock:
+                    px.stop()
+                    px.backward(30)
+                time.sleep(0.5)
+                with i2c_lock:
+                    px.stop()
+                state["speed"] = 0
+                state["direction"] = "stop"
+                continue
+
             # Use the minimum of ultrasonic and camera (if valid) for collision check
             valid_dists = [d for d in [distance, cam_dist] if d > 0]
             min_dist = min(valid_dists) if valid_dists else -1.0
 
-            # 2. Collision prevention (Auto-Brake)
+            # 3. Collision prevention (Auto-Brake)
             if state["direction"] == "forward" and min_dist > 0:
                 stop_dist, slow_dist = get_safety_thresholds(state["speed"])
                 if min_dist < stop_dist:
@@ -231,6 +249,28 @@ def move_car():
     
     # Reset watchdog timer for movement actions
     if action == "forward":
+        # Check cliff first
+        with i2c_lock:
+            grayscale = px.get_grayscale_data() if px else [0, 0, 0]
+        if grayscale and all(val > explorer.cliff_threshold for val in grayscale):
+            with i2c_lock:
+                px.stop()
+            state["speed"] = 0
+            state["direction"] = "stop"
+            t_done = time.time() * 1000.0
+            return jsonify({
+                "status": "blocked",
+                "message": "Cliff detected in front!",
+                "state": state,
+                "telemetry": {
+                    "distance": sensor_data["distance"],
+                    "camera_distance": sensor_data["camera_distance"],
+                    "grayscale": grayscale
+                },
+                "t_robot_received": t_recv,
+                "t_robot_done": t_done
+            })
+
         valid_dists = [d for d in [sensor_data["distance"], sensor_data["camera_distance"]] if d > 0]
         distance = min(valid_dists) if valid_dists else -1.0
             
@@ -372,6 +412,7 @@ def get_telemetry():
         "status": "success",
         "telemetry": {
             "distance": sensor_data["distance"],
+            "camera_distance": sensor_data["camera_distance"],
             "grayscale": sensor_data["grayscale"],
             "cpu_temp": cpu_temp,
             "cpu_usage": cpu_usage,
