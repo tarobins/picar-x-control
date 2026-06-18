@@ -96,7 +96,6 @@ def safety_watchdog():
     global last_move_time, state, sensor_data
     idle_voltage = None
     consecutive_sags = 0
-    STALL_VOLTAGE_SAG = 0.25 # in Volts
     
     while True:
         time.sleep(0.05) # Check every 50ms for collision / heartbeat
@@ -158,7 +157,10 @@ def safety_watchdog():
                 else:
                     if idle_voltage is not None:
                         sag = idle_voltage - voltage
-                        if sag > STALL_VOLTAGE_SAG:
+                        # Dynamic sag threshold: scales from 0.08V (at speed 20) to 0.22V (at speed 100)
+                        speed_factor = max(0.0, min(1.0, (state["speed"] - 20) / 80.0))
+                        stall_sag_threshold = 0.08 + speed_factor * 0.14
+                        if sag > stall_sag_threshold:
                             consecutive_sags += 1
                         else:
                             consecutive_sags = max(0, consecutive_sags - 1)
