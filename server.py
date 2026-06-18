@@ -100,14 +100,24 @@ def safety_watchdog():
     while True:
         time.sleep(0.05) # Check every 50ms for collision / heartbeat
         if px:
-            # Read battery voltage from A4
+            # Read battery voltage from A4 with I2C noise filtering
             try:
                 from robot_hat import ADC
-                global _watchdog_battery_adc
+                global _watchdog_battery_adc, _last_valid_voltage
                 if '_watchdog_battery_adc' not in globals():
                     _watchdog_battery_adc = ADC('A4')
+                    _last_valid_voltage = None
                 raw_v = _watchdog_battery_adc.read_voltage()
                 voltage = round(raw_v * 3.0, 2)
+                
+                # Check for extreme out-of-bounds corruption
+                if voltage < 6.0 or voltage > 9.0:
+                    voltage = _last_valid_voltage if _last_valid_voltage is not None else -1.0
+                # Check for transient single-sample glitches/spikes
+                elif _last_valid_voltage is not None and abs(voltage - _last_valid_voltage) > 0.15:
+                    voltage = _last_valid_voltage
+                else:
+                    _last_valid_voltage = voltage
             except Exception as e:
                 voltage = -1.0
 
@@ -157,9 +167,9 @@ def safety_watchdog():
                 else:
                     if idle_voltage is not None:
                         sag = idle_voltage - voltage
-                        # Dynamic sag threshold: scales from 0.08V (at speed 20) to 0.22V (at speed 100)
+                        # Dynamic sag threshold: scales from 0.05V (at speed 20) to 0.12V (at speed 100)
                         speed_factor = max(0.0, min(1.0, (state["speed"] - 20) / 80.0))
-                        stall_sag_threshold = 0.08 + speed_factor * 0.14
+                        stall_sag_threshold = 0.05 + speed_factor * 0.07
                         if sag > stall_sag_threshold:
                             consecutive_sags += 1
                         else:
