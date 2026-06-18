@@ -639,18 +639,29 @@
 
             <!-- Telemetry nested -->
             <div class="telemetry-grid">
-                <div class="telemetry-box" id="radar-box" style="justify-content: space-between; min-height: 140px;">
-                    <span style="font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.3rem;">
+                <div class="telemetry-box" id="radar-box" style="justify-content: space-between; min-height: 140px; padding: 0.8rem;">
+                    <span style="font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.3rem; margin-bottom: 0.4rem;">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                        Obstacle Range
+                        Obstacle Ranges
                     </span>
-                    <div>
-                        <span class="telemetry-val" id="radar-val">--</span>
-                        <span style="font-size: 0.75rem; color: var(--text-muted)">cm</span>
-                    </div>
-                    <div style="width: 100%; padding: 0 0.5rem;">
-                        <div style="background: rgba(255,255,255,0.06); height: 6px; border-radius: 3px; overflow: hidden; width: 100%;">
-                            <div id="radar-bar-fill" style="height: 100%; border-radius: 3px; background: var(--accent-success); width: 0%; transition: width 0.15s ease, background-color 0.15s ease;"></div>
+                    <div style="width: 100%; display: flex; flex-direction: column; gap: 0.6rem;">
+                        <div style="display: flex; flex-direction: column; gap: 0.2rem; width: 100%;">
+                            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted);">
+                                <span>Ultrasound:</span>
+                                <span><strong id="radar-us-val" style="color: var(--accent-primary);">--</strong> cm</span>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.06); height: 5px; border-radius: 3px; overflow: hidden; width: 100%;">
+                                <div id="radar-us-bar-fill" style="height: 100%; border-radius: 3px; background: var(--accent-success); width: 0%; transition: width 0.15s ease;"></div>
+                            </div>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 0.2rem; width: 100%;">
+                            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted);">
+                                <span>Camera:</span>
+                                <span><strong id="radar-cam-val" style="color: var(--accent-purple);">--</strong> cm</span>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.06); height: 5px; border-radius: 3px; overflow: hidden; width: 100%;">
+                                <div id="radar-cam-bar-fill" style="height: 100%; border-radius: 3px; background: var(--accent-purple); width: 0%; transition: width 0.15s ease;"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -923,7 +934,7 @@ bk 1</textarea>
         const panVal = document.getElementById('pan-val');
         const tiltVal = document.getElementById('tilt-val');
         const radarBox = document.getElementById('radar-box');
-        const radarVal = document.getElementById('radar-val');
+        const radarVal = null;
         const codeEditor = document.getElementById('code-editor');
         const btnRunCode = document.getElementById('btn-run-code');
         const consoleOutput = document.getElementById('console-output');
@@ -1674,32 +1685,58 @@ else:
         function updateTelemetryUI(tel) {
             if (!tel) return;
 
-            // Obstacle distance
-            if (tel.distance >= 0) {
-                radarVal.textContent = tel.distance;
-                const distPct = Math.min(100, Math.max(0, (tel.distance / 100) * 100));
-                const barFill = document.getElementById('radar-bar-fill');
-                barFill.style.width = `${distPct}%`;
-
-                if (tel.distance < 20) {
-                    radarBox.style.background = "rgba(255, 82, 82, 0.15)";
-                    radarBox.style.borderColor = "var(--accent-danger)";
-                    radarVal.style.color = "var(--accent-danger)";
-                    barFill.style.backgroundColor = "var(--accent-danger)";
-                } else if (tel.distance < 40) {
-                    radarBox.style.background = "rgba(255, 145, 0, 0.1)";
-                    radarBox.style.borderColor = "var(--accent-warning)";
-                    radarVal.style.color = "var(--accent-warning)";
-                    barFill.style.backgroundColor = "var(--accent-warning)";
+            // Ultrasound distance
+            const usVal = tel.distance;
+            const usEl = document.getElementById('radar-us-val');
+            const usBar = document.getElementById('radar-us-bar-fill');
+            if (usVal >= 0 && usVal < 900) {
+                usEl.textContent = Math.round(usVal);
+                const distPct = Math.min(100, Math.max(0, (usVal / 100) * 100));
+                usBar.style.width = `${distPct}%`;
+                if (usVal < 20) {
+                    usBar.style.backgroundColor = "var(--accent-danger)";
+                } else if (usVal < 40) {
+                    usBar.style.backgroundColor = "var(--accent-warning)";
                 } else {
-                    radarBox.style.background = "rgba(255, 255, 255, 0.02)";
-                    radarBox.style.borderColor = "rgba(255, 255, 255, 0.04)";
-                    radarVal.style.color = "var(--text-main)";
-                    barFill.style.backgroundColor = "var(--accent-success)";
+                    usBar.style.backgroundColor = "var(--accent-success)";
                 }
             } else {
-                radarVal.textContent = "--";
-                document.getElementById('radar-bar-fill').style.width = "0%";
+                usEl.textContent = "--";
+                usBar.style.width = "0%";
+            }
+
+            // Camera distance
+            const camVal = tel.camera_distance;
+            const camEl = document.getElementById('radar-cam-val');
+            const camBar = document.getElementById('radar-cam-bar-fill');
+            if (camVal >= 0 && camVal < 900) {
+                camEl.textContent = Math.round(camVal);
+                const distPct = Math.min(100, Math.max(0, (camVal / 100) * 100));
+                camBar.style.width = `${distPct}%`;
+                if (camVal < 20) {
+                    camBar.style.backgroundColor = "var(--accent-danger)";
+                } else if (camVal < 40) {
+                    camBar.style.backgroundColor = "var(--accent-warning)";
+                } else {
+                    camBar.style.backgroundColor = "var(--accent-purple)";
+                }
+            } else {
+                camEl.textContent = "--";
+                camBar.style.width = "0%";
+            }
+
+            // Outer border/glow color based on minimum distance of the two
+            const validDists = [usVal, camVal].filter(d => d >= 0 && d < 900);
+            const minVal = validDists.length > 0 ? Math.min(...validDists) : -1;
+            if (minVal >= 0 && minVal < 20) {
+                radarBox.style.background = "rgba(255, 82, 82, 0.15)";
+                radarBox.style.borderColor = "var(--accent-danger)";
+            } else if (minVal >= 0 && minVal < 40) {
+                radarBox.style.background = "rgba(255, 145, 0, 0.1)";
+                radarBox.style.borderColor = "var(--accent-warning)";
+            } else {
+                radarBox.style.background = "rgba(255, 255, 255, 0.02)";
+                radarBox.style.borderColor = "rgba(255, 255, 255, 0.04)";
             }
 
             // Grayscale values
