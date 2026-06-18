@@ -75,6 +75,7 @@ sensor_data = {
 
 # Safety Watchdog variables
 last_move_time = time.time()
+stall_triggered = False
 
 def get_safety_thresholds(current_speed):
     # Stop distance scales from 10cm (at speed 25) to 25cm (at speed 100)
@@ -164,6 +165,8 @@ def safety_watchdog():
                         
                         if consecutive_sags >= 5: # 250ms of sustained sag
                             print(f"Watchdog Stall Protection: Stall detected! Sag={sag:.2f}V (Idle: {idle_voltage:.2f}V, Current: {voltage:.2f}V). Stopping!")
+                            global stall_triggered
+                            stall_triggered = True
                             with i2c_lock:
                                 px.stop()
                             state["speed"] = 0
@@ -277,7 +280,8 @@ def get_status():
 @app.route('/api/move', methods=['POST'])
 def move_car():
     t_recv = time.time() * 1000.0
-    global last_move_time
+    global last_move_time, stall_triggered
+    stall_triggered = False
     if not px:
         return jsonify({"status": "error", "message": "Picarx not initialized"}), 500
     
@@ -475,6 +479,7 @@ def get_telemetry():
             "camera_distance": sensor_data["camera_distance"],
             "grayscale": sensor_data["grayscale"],
             "battery_voltage": sensor_data["battery_voltage"],
+            "stall_triggered": stall_triggered,
             "cpu_temp": cpu_temp,
             "cpu_usage": cpu_usage,
             "memory_usage": mem_usage
