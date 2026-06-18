@@ -157,3 +157,40 @@ To fix command backlog and lag spikes over congested 2.4 GHz Wi-Fi, the followin
   - The UI trackpad and arrow keys compute angles relative to this zero point while translating them to correct absolute physical coordinates sent to the robot.
   - A dashed purple circular target (`gimbal-zero-indicator`) appears on the pad to visually mark the calibrated zero coordinate relative to the physical servo center.
   - **Hardware boundary clipping**: The UI dot accurately bounds itself within the actual physical limits (`[-90, 90]` for Pan, `[-35, 65]` for Tilt) regardless of the calibration offset.
+
+---
+
+## 7. Recent Upgrades & Safety Guardrails (June 17, 2026)
+
+To improve navigation reliability, resolve API edge-case exceptions, and safeguard the robot from mechanical stresses under stall conditions:
+
+### A. Dynamic Cliff Calibration Direction
+* **Problem**: Reflective floor grayscale readings vary, and cliff triggers can be either lower-than-threshold or higher-than-threshold depending on hardware calibrations.
+* **Fix**: The watchdog compares `air_sample < floor_sample` from `~/data/calibration_config.json` on startup. 
+  - If true, a cliff triggers when readings drop *below* the threshold (`all(val < cliff_threshold)`).
+  - If false, it triggers when readings go *above* the threshold (`all(val > cliff_threshold)`).
+  - Active in the autonomous explorer loop, safety watchdog, and `/api/move` input verification.
+
+### B. Safe JSON HTTP Parsing (415 Fix)
+* **Problem**: Accessing `request.json` inside Flask POST routes threw a `415 Unsupported Media Type` HTTP exception when clients sent requests without explicitly setting the `application/json` Content-Type header (e.g. clicking "Start SLAM" on the dashboard).
+* **Fix**: Replaced all `request.json` references with `request.get_json(silent=True) or {}` across `local_server.py` and `server.py`.
+
+### C. Speed-Adaptive Voltage Sag Stall Watchdog & I2C Glitch Filter
+* **Problem**: Stalling the DC motors draws high current, which sags battery voltage, but the sag varies based on PWM duty cycle. Furthermore, motor running introduced electromagnetic interference (EMI) on the I2C bus, creating random reading spikes (e.g., `0.6V` or `113V`).
+* **Fix**:
+  - **I2C Noise Filter**: Filters out extreme out-of-bounds readings (`<6.0V` or `>9.0V`) and ignores sudden transient jumps/drops (`>0.15V` in 50ms), reusing the last valid voltage reading.
+  - **Adaptive Threshold**: Dynamically scales the stall sag threshold based on throttle speed:
+    ```python
+    stall_sag_threshold = 0.05 + speed_factor * 0.07
+    ```
+    (At default speed `50`, the threshold is `0.076V` of sag; at speed `100`, it is `0.12V` of sag).
+  - **Stall Action**: If the sag exceeds the threshold for 5 consecutive loops (250ms), the watchdog executes an emergency stop (`px.stop()`), stops autonomous SLAM paths, sets speed to `0`, and registers a global `stall_triggered = True` flag.
+
+### D. Drive Deck Stall Warnings
+* **Features**: Added a pulsing red `MOTOR STALLED` warning badge next to the Drive Deck title in the Web UI.
+* **UX Alert**: When `stall_triggered` is true, the entire Drive Deck card borders in red and emits a pulsing red shadow glow to alert the operator. The state automatically clears once a new manual command or calibration instruction is sent.
+
+### E. SLAM Map & Odometry Reset
+* **Features**: Added a `Reset` button to the SLAM control grid in `templates/index.html`.
+* **Flow**: Triggers `/api/map/reset` which calls `grid.reset_map()` (erasing the occupancy grid array in `mapping.py` and writing a blank file) and resets the robot's odometry tracking coordinates (`x`, `y`, `heading_deg`) back to `0`.
+
