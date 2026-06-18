@@ -97,6 +97,70 @@ def execute_code():
         return jsonify(res)
     return jsonify({"status": "error", "message": "Robot connection failed"}), 503
 
+@app.route('/api/map/data', methods=['GET'])
+def get_map_telemetry():
+    try:
+        r = requests.get(f"{picar_client.BASE_URL}/api/map/data", timeout=3)
+        return jsonify(r.json()), r.status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 503
+
+@app.route('/api/explore/start', methods=['POST'])
+def start_explore():
+    try:
+        r = requests.post(f"{picar_client.BASE_URL}/api/explore/start", json=request.json or {}, timeout=3)
+        return jsonify(r.json()), r.status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 503
+
+@app.route('/api/explore/stop', methods=['POST'])
+def stop_explore():
+    try:
+        r = requests.post(f"{picar_client.BASE_URL}/api/explore/stop", json=request.json or {}, timeout=3)
+        return jsonify(r.json()), r.status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 503
+
+@app.route('/api/calibrate/steering', methods=['POST'])
+def calibrate_steering():
+    try:
+        r = requests.post(f"{picar_client.BASE_URL}/api/calibrate/steering", json=request.json or {}, timeout=3)
+        return jsonify(r.json()), r.status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 503
+
+@app.route('/api/calibrate/read_sensors', methods=['GET'])
+def read_sensors_for_calibration():
+    try:
+        r = requests.get(f"{picar_client.BASE_URL}/api/calibrate/read_sensors", timeout=3)
+        return jsonify(r.json()), r.status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 503
+
+@app.route('/api/calibrate/camera', methods=['POST'])
+def calibrate_camera():
+    try:
+        r = requests.post(f"{picar_client.BASE_URL}/api/calibrate/camera", json=request.json or {}, timeout=3)
+        return jsonify(r.json()), r.status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 503
+
+@app.route('/api/calibrate/save', methods=['POST'])
+def save_calibration():
+    try:
+        r = requests.post(f"{picar_client.BASE_URL}/api/calibrate/save", json=request.json or {}, timeout=3)
+        return jsonify(r.json()), r.status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 503
+
+@app.route('/api/calibrate/config', methods=['GET'])
+def get_calibration_config():
+    try:
+        r = requests.get(f"{picar_client.BASE_URL}/api/calibrate/config", timeout=3)
+        return jsonify(r.json()), r.status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 503
+
 def daemonize(log_file=None):
     try:
         pid = os.fork()

@@ -4,6 +4,7 @@ from vilib import Vilib
 import cv2
 import vilib.vilib
 import time
+import json
 
 # Monkeypatch get_frame to optimize JPEG compression (quality=50) and handle None frames safely
 vilib.vilib.get_frame = lambda: cv2.imencode('.jpg', Vilib.flask_img, [int(cv2.IMWRITE_JPEG_QUALITY), 50])[1].tobytes() if Vilib.flask_img is not None else b''
@@ -27,6 +28,14 @@ try:
 except Exception as e:
     print(f"Error initializing Picarx: {e}")
     px = None
+
+from mapping import OccupancyGrid
+from vision_distance import VisionSensor
+from autonomous_drive import AutonomousExplorer
+
+grid = OccupancyGrid()
+vision = VisionSensor()
+explorer = AutonomousExplorer(grid, vision, px, i2c_lock)
 
 # Initialize Vilib camera streaming (disabled by default for low latency)
 camera_started = False
@@ -367,6 +376,103 @@ def execute_code():
     return jsonify({
         "status": "success" if success else "error",
         "output": output
+    })
+
+@app.route('/api/map/data', methods=['GET'])
+def get_map_telemetry():
+    return jsonify({
+        "map": grid.get_payload(),
+        "ultrasound_distance": explorer.us_dist,
+        "camera_distance": explorer.cam_dist,
+        "state": explorer.state,
+        "x": explorer.x,
+        "y": explorer.y,
+        "heading": explorer.heading_deg
+    })
+
+@app.route('/api/explore/start', methods=['POST'])
+def start_explore():
+    explorer.start_exploration()
+    return jsonify({"status": "success", "state": explorer.state})
+
+@app.route('/api/explore/stop', methods=['POST'])
+def stop_explore():
+    explorer.stop_exploration()
+    return jsonify({"status": "success", "state": explorer.state})
+
+@app.route('/api/calibrate/steering', methods=['POST'])
+def calibrate_steering():
+    explorer.state = "CALIBRATING"
+    with i2c_lock:
+        px.stop()
+    angle = int(request.json.get('angle', 0))
+    with i2c_lock:
+        px.set_dir_servo_angle(angle)
+    return jsonify({"status": "steering_adjusted", "angle": angle})
+
+@app.route('/api/calibrate/read_sensors', methods=['GET'])
+def read_sensors_for_calibration():
+    with i2c_lock:
+        grayscale = px.get_grayscale_data() if px else [0, 0, 0]
+    return jsonify({
+        "grayscale": grayscale
+    })
+
+@app.route('/api/calibrate/camera', methods=['POST'])
+def calibrate_camera():
+    target_dist = float(request.json.get('target_distance', 20.0))
+    
+    # Read frame from Vilib if available
+    from vilib import Vilib
+    frame = None
+    if Vilib.flask_img is not None:
+        try:
+            import numpy as np
+            frame = np.array(Vilib.flask_img, dtype=np.uint8)
+        except Exception as e:
+            print(f"Error converting Vilib frame to numpy array: {e}")
+            frame = None
+        
+    if frame is None:
+        return jsonify({"status": "error", "message": "Camera offline / Vilib not started"}), 500
+    
+    lowest_y = vision.find_lowest_obstacle_pixel(frame)
+    if lowest_y is None:
+        return jsonify({"status": "error", "message": "No object contours detected. Ensure a distinct, high-contrast obstacle is placed in front of the camera."}), 400
+        
+    c_y = frame.shape[0] / 2.0
+    if lowest_y <= c_y:
+        return jsonify({"status": "error", "message": f"Obstacle baseline (y={lowest_y}) must be below the horizon center line (y={c_y}). Try tilting the camera down or positioning the obstacle closer."}), 400
+        
+    computed_f = (target_dist * (lowest_y - c_y)) / vision.cam_height
+    vision.focal_length = computed_f
+    return jsonify({"status": "success", "focal_length": computed_f})
+
+@app.route('/api/calibrate/save', methods=['POST'])
+def save_calibration():
+    config_payload = request.json
+    os.makedirs("data", exist_ok=True)
+    with open("data/calibration_config.json", "w") as f:
+        json.dump(config_payload, f)
+    explorer.state = "IDLE"
+    explorer.load_calibration_config()
+    return jsonify({"status": "saved"})
+
+@app.route('/api/calibrate/config', methods=['GET'])
+def get_calibration_config():
+    config_path = "data/calibration_config.json"
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                return jsonify(json.load(f))
+        except Exception as e:
+            print(f"Error reading config: {e}")
+    return jsonify({
+        "steering_offset": 0,
+        "cliff_threshold": 1000,
+        "focal_length": 350.0,
+        "floor_sample": None,
+        "air_sample": None
     })
 
 if __name__ == '__main__':
