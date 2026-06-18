@@ -121,6 +121,15 @@ def stop_explore():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 503
 
+@app.route('/api/map/reset', methods=['POST'])
+def reset_map():
+    try:
+        r = requests.post(f"{picar_client.BASE_URL}/api/map/reset", json=request.get_json(silent=True) or {}, timeout=3)
+        return jsonify(r.json()), r.status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 503
+
+
 @app.route('/api/calibrate/steering', methods=['POST'])
 def calibrate_steering():
     try:

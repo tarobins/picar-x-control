@@ -542,6 +542,15 @@ def stop_explore():
     explorer.stop_exploration()
     return jsonify({"status": "success", "state": explorer.state})
 
+@app.route('/api/map/reset', methods=['POST'])
+def reset_map():
+    grid.reset_map()
+    explorer.x = 0.0
+    explorer.y = 0.0
+    explorer.heading_deg = 0.0
+    return jsonify({"status": "success", "message": "SLAM map and robot position reset successfully."})
+
+
 @app.route('/api/calibrate/steering', methods=['POST'])
 def calibrate_steering():
     explorer.state = "CALIBRATING"

@@ -848,9 +848,10 @@ bk 1</textarea>
                 <span>Camera Range: <span id="slam-cam-val" style="color: var(--accent-purple); font-weight: 600;">---</span> cm</span>
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+            <div style="display: grid; grid-template-columns: 2fr 2fr 1fr; gap: 0.5rem;">
                 <button class="btn-primary" id="btn-start-exploration" style="background: linear-gradient(135deg, var(--accent-success), #1e7e34); color: white;">Start SLAM</button>
                 <button class="btn-primary stop-btn" id="btn-stop-exploration" style="background: linear-gradient(135deg, var(--accent-danger), #bd2130); color: white;">Stop SLAM</button>
+                <button class="btn-primary" id="btn-reset-map" style="background: linear-gradient(135deg, var(--accent-warning), #d39e00); color: white;">Reset</button>
             </div>
         </div>
 
@@ -2253,6 +2254,19 @@ fd 3`
             .then(data => {
                 document.getElementById('slam-mode-val').innerText = data.state;
             });
+        });
+
+        const btnResetMap = document.getElementById('btn-reset-map');
+        btnResetMap.addEventListener('click', () => {
+            if (confirm("Are you sure you want to reset the SLAM map and odometry tracking? This cannot be undone.")) {
+                fetch('/api/map/reset', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    alert(data.message || "SLAM map reset successfully.");
+                    pollSlam();
+                })
+                .catch(err => alert("Error resetting map: " + err.message));
+            }
         });
 
         function pollSlam() {

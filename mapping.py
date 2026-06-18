@@ -35,3 +35,8 @@ class OccupancyGrid:
 
     def get_payload(self):
         return self.grid.tolist()
+
+    def reset_map(self):
+        self.grid = np.zeros((self.size, self.size), dtype=np.int8)
+        self.save_map()
+
