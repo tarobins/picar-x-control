@@ -68,6 +68,7 @@ state = {
 # Shared sensor readings
 sensor_data = {
     "distance": -1.0,
+    "camera_distance": -1.0,
     "grayscale": [0, 0, 0]
 }
 
@@ -107,23 +108,45 @@ def safety_watchdog():
             except:
                 grayscale = [0, 0, 0]
                 
+            cam_dist = -1.0
+            from vilib import Vilib
+            frame = None
+            if Vilib.flask_img is not None:
+                try:
+                    import numpy as np
+                    frame = np.array(Vilib.flask_img, dtype=np.uint8)
+                except:
+                    frame = None
+            if frame is not None:
+                try:
+                    est = vision.estimate_distance(frame)
+                    if est:
+                        cam_dist = round(est, 1)
+                except Exception as e:
+                    print(f"Error in watchdog camera estimate: {e}")
+                
             sensor_data["distance"] = distance
+            sensor_data["camera_distance"] = cam_dist
             sensor_data["grayscale"] = grayscale
 
+            # Use the minimum of ultrasonic and camera (if valid) for collision check
+            valid_dists = [d for d in [distance, cam_dist] if d > 0]
+            min_dist = min(valid_dists) if valid_dists else -1.0
+
             # 2. Collision prevention (Auto-Brake)
-            if state["direction"] == "forward" and distance > 0:
+            if state["direction"] == "forward" and min_dist > 0:
                 stop_dist, slow_dist = get_safety_thresholds(state["speed"])
-                if distance < stop_dist:
-                    print(f"Watchdog Auto-Brake: Obstacle at {distance:.1f}cm. Stopping!")
+                if min_dist < stop_dist:
+                    print(f"Watchdog Auto-Brake: Obstacle at {min_dist:.1f}cm (US: {distance:.1f}, Cam: {cam_dist:.1f}). Stopping!")
                     with i2c_lock:
                         px.stop()
                     state["speed"] = 0
                     state["direction"] = "stop"
-                elif distance < slow_dist:
+                elif min_dist < slow_dist:
                     target_speed = state["speed"]
                     min_speed = 25
                     if target_speed > min_speed:
-                        scaled = min_speed + (target_speed - min_speed) * (distance - stop_dist) / (slow_dist - stop_dist)
+                        scaled = min_speed + (target_speed - min_speed) * (min_dist - stop_dist) / (slow_dist - stop_dist)
                         scaled = int(max(min_speed, min(target_speed, scaled)))
                         with i2c_lock:
                             px.forward(scaled)
@@ -208,7 +231,8 @@ def move_car():
     
     # Reset watchdog timer for movement actions
     if action == "forward":
-        distance = sensor_data["distance"]
+        valid_dists = [d for d in [sensor_data["distance"], sensor_data["camera_distance"]] if d > 0]
+        distance = min(valid_dists) if valid_dists else -1.0
             
         stop_dist, slow_dist = get_safety_thresholds(speed)
         
@@ -224,6 +248,7 @@ def move_car():
                 "state": state,
                 "telemetry": {
                     "distance": sensor_data["distance"],
+                    "camera_distance": sensor_data["camera_distance"],
                     "grayscale": sensor_data["grayscale"]
                 },
                 "t_robot_received": t_recv,
