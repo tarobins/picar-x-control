@@ -25,14 +25,23 @@ class AutonomousExplorer:
     def load_calibration_config(self):
         try:
             config_path = "data/calibration_config.json"
+            if not os.path.exists(config_path):
+                config_path = os.path.expanduser("~/data/calibration_config.json")
             if os.path.exists(config_path):
                 with open(config_path, "r") as f:
                     config = json.load(f)
                     self.cliff_threshold = config.get("cliff_threshold", 1000)
                     self.steering_offset = config.get("steering_offset", 0)
                     self.vision.focal_length = config.get("focal_length", 350.0)
+                    self.floor_sample = config.get("floor_sample", None)
+                    self.air_sample = config.get("air_sample", None)
+            else:
+                self.floor_sample = None
+                self.air_sample = None
         except Exception as e:
             print(f"Error loading calibration config: {e}")
+            self.floor_sample = None
+            self.air_sample = None
 
     def check_cliff(self):
         if not self.px:
@@ -40,7 +49,16 @@ class AutonomousExplorer:
         try:
             with self.i2c_lock:
                 data = self.px.get_grayscale_data()
-            return all(val > self.cliff_threshold for val in data)
+            
+            # Detect direction of cliff readings dynamically
+            is_cliff_low = True
+            if hasattr(self, 'floor_sample') and hasattr(self, 'air_sample') and self.floor_sample is not None and self.air_sample is not None:
+                is_cliff_low = self.air_sample < self.floor_sample
+                
+            if is_cliff_low:
+                return all(val < self.cliff_threshold for val in data)
+            else:
+                return all(val > self.cliff_threshold for val in data)
         except Exception as e:
             print(f"Error reading grayscale sensors: {e}")
             return False

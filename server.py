@@ -131,8 +131,14 @@ def safety_watchdog():
 
             # Check cliff
             cliff_triggered = False
-            if grayscale and all(val > explorer.cliff_threshold for val in grayscale):
-                cliff_triggered = True
+            if grayscale:
+                is_cliff_low = True
+                if explorer.floor_sample is not None and explorer.air_sample is not None:
+                    is_cliff_low = explorer.air_sample < explorer.floor_sample
+                if is_cliff_low:
+                    cliff_triggered = all(val < explorer.cliff_threshold for val in grayscale)
+                else:
+                    cliff_triggered = all(val > explorer.cliff_threshold for val in grayscale)
 
             # 2. Cliff detection override
             if cliff_triggered and state["direction"] != "stop":
@@ -252,7 +258,18 @@ def move_car():
         # Check cliff first
         with i2c_lock:
             grayscale = px.get_grayscale_data() if px else [0, 0, 0]
-        if grayscale and all(val > explorer.cliff_threshold for val in grayscale):
+        is_cliff_low = True
+        if explorer.floor_sample is not None and explorer.air_sample is not None:
+            is_cliff_low = explorer.air_sample < explorer.floor_sample
+            
+        cliff_triggered = False
+        if grayscale:
+            if is_cliff_low:
+                cliff_triggered = all(val < explorer.cliff_threshold for val in grayscale)
+            else:
+                cliff_triggered = all(val > explorer.cliff_threshold for val in grayscale)
+                
+        if cliff_triggered:
             with i2c_lock:
                 px.stop()
             state["speed"] = 0
