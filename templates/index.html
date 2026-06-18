@@ -1038,11 +1038,26 @@ else:
         };
 
         // Initialize Camera Stream URL
-        function initCamera() {
+        function initCamera(isInitial = false) {
             if (cameraActive) {
-                imgStream.src = videoFeedUrl;
-                imgStream.style.display = 'block';
-                imgPlaceholder.style.display = 'none';
+                if (isInitial) {
+                    imgStream.src = videoFeedUrl;
+                    imgStream.style.display = 'block';
+                    imgPlaceholder.style.display = 'none';
+                } else {
+                    // Give the remote Picamera 1.8s to warm up before setting the src
+                    imgStream.removeAttribute('src');
+                    imgStream.style.display = 'none';
+                    imgPlaceholder.style.display = 'flex';
+                    imgPlaceholder.querySelector('span').textContent = "Warming up camera...";
+                    
+                    setTimeout(() => {
+                        imgStream.src = videoFeedUrl;
+                        imgStream.style.display = 'block';
+                        imgPlaceholder.style.display = 'none';
+                        imgPlaceholder.querySelector('span').textContent = "Camera Stream Offline";
+                    }, 1800);
+                }
                 toggleCameraBtn.textContent = 'Disable Camera';
                 toggleCameraBtn.classList.remove('stop-btn');
             } else {
@@ -1066,7 +1081,7 @@ else:
             .then(data => {
                 if (data.status === 'success') {
                     cameraActive = data.camera_active;
-                    initCamera();
+                    initCamera(false);
                 }
             })
             .catch(err => console.error("Error switching camera:", err));
@@ -1770,7 +1785,7 @@ else:
                     cameraActive = st.camera_active;
                     
                     setGimbalAngles((st.pan_angle || 0) - panZeroOffset, (st.tilt_angle || 0) - tiltZeroOffset);
-                    initCamera();
+                    initCamera(true);
                 }
             })
             .catch(err => console.error("Initial status fetch error:", err));

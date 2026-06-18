@@ -9,6 +9,7 @@ class OccupancyGrid:
         self.origin = (self.size // 2, self.size // 2)
         self.map_file = "data/saved_map.npy"
         os.makedirs("data", exist_ok=True)
+        self.load_map()
 
     def world_to_grid(self, x_cm, y_cm):
         gx = int(self.origin[0] + (x_cm / self.resolution))
