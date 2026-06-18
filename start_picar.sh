@@ -94,8 +94,8 @@ stop_services() {
     ssh "$ROBOT_HOST" "pkill -9 -f server.py" || true
     
     # Give the robot OS a moment to free the camera device and socket bindings
-    log "Waiting 1.0s for remote resources to release..."
-    sleep 1.0
+    log "Waiting 2.5s for remote resources to release..."
+    sleep 2.5
     log "All services stopped."
 }
 
