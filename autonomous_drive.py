@@ -32,6 +32,7 @@ class AutonomousExplorer:
         self.collision_detected = False
         self.collision_active = False
         self.collision_direction = "stop"
+        self.imu_start_time = time.time()
         
         # Calibration defaults (overwritten by config files)
         self.cliff_threshold = 1000
@@ -74,13 +75,14 @@ class AutonomousExplorer:
                     self.accel_z = mapped["z"] - self.axis_offsets.get("z", 0.0)
                     
                     # Calculate difference (jerk/shock) from previous sample
+                    # We only monitor horizontal plane (x & y) differences to ignore vertical gravity offsets and bumps.
                     dx = self.accel_x - self._last_accel_x
                     dy = self.accel_y - self._last_accel_y
-                    dz = self.accel_z - self._last_accel_z
-                    shock = math.sqrt(dx*dx + dy*dy + dz*dz)
+                    shock = math.sqrt(dx*dx + dy*dy)
                     
                     # Skip initial/settling comparison spikes if previous sample was zero
-                    if self._last_accel_x != 0.0 or self._last_accel_y != 0.0:
+                    # or if the IMU loop has been running for less than 3 seconds (settling window).
+                    if (self._last_accel_x != 0.0 or self._last_accel_y != 0.0) and (time.time() - self.imu_start_time > 3.0):
                         if shock > self.collision_threshold:
                             print(f"[IMU SHOCK] Shock detected: {shock:.2f} m/s^2!")
                             if self.state == "EXPLORING":
