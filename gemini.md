@@ -221,17 +221,45 @@ Because the sensor can be physically mounted in any arbitrary layout, the calibr
 
 To protect the robot from sudden physical impacts from any direction:
 
-### A. Jerk/Shock Calculation
-- The 10 Hz background telemetry thread calculates the Euclidean norm of the acceleration delta (jerk vector) across all 3 axes between consecutive samples:
-  $$jerk = \sqrt{(\Delta a_x)^2 + (\Delta a_y)^2 + (\Delta a_z)^2}$$
-- If $jerk > 5.0 \text{ m/s}^2$ (default threshold, configurable in `calibration_config.json` via `"collision_threshold"`), a collision event is triggered.
+### A. Jerk/Shock Calculation Refinements
+- The 10 Hz background telemetry thread calculates the Euclidean norm of the acceleration delta (jerk vector) across the horizontal plane ($X$ and $Y$ axes) between consecutive samples:
+  $$jerk = \sqrt{(\Delta a_x)^2 + (\Delta a_y)^2}$$
+- **Why Horizontal Only**: Excluding the $Z$-axis (vertical gravity vector) prevents false triggers caused by vertical road bumps, chassis vibration, or gravity axis mapping transitions.
+- **Boot Settling Delay**: Implemented a 3.0-second warm-up window after startup. Accelerometer readings are updated, but collision triggers are bypassed until the sensor and its zero-g filters settle.
+- If $jerk > 5.0 \text{ m/s}^2$ (default threshold, configurable in `data/calibration_config.json` via `"collision_threshold"`), a collision event is triggered.
 
-### B. Manual Mode Auto-Stop
-- In manual mode, a triggered collision stops the robot immediately (`px.stop()`) and flags `collision_active = True`.
+### B. Direction-Aware Collision Locking (Manual Mode)
+- In manual mode, a triggered collision stops the robot immediately (`px.stop()`), flags `collision_active = True`, and saves the direction of travel (`collision_direction`).
 - **UI Alerting**: The Drive Deck card borders in orange and displays a blinking `COLLISION DETECTED` warning badge.
-- **Lock Release**: Sending any new movement command (e.g. hitting W/A/S/D or manual sliders) automatically resets `collision_active = False`, making the car instantly driveable again.
+- **Watchdog / Heartbeat Override Prevention**: Previously, the 250ms periodic safety heartbeat from the browser would immediately clear `collision_active` and resume backing into walls. Now, the `/api/move` endpoint enforces a direction lock:
+  - Commands to drive in the **same direction** as the collision are blocked, keeping the car stopped.
+  - Steering commands (`action: "steer"`) do not clear the lock.
+  - Key releases (`action: "stop"`) or commanding drive in the **opposite direction** (e.g. pressing W to go forward after a backward crash) immediately clears the lock and resumes normal movement.
 
 ### C. SLAM Exploration Path Redirection
 - If a collision occurs during SLAM (`EXPLORING` mode), the robot triggers `collision_detected = True`.
 - The autonomous explore loop instantly intercepts the event, stops, reverses backward for 0.6 seconds, turns left 45 degrees, drives forward briefly to clear the obstacle, and replans a new coordinate path.
+
+---
+
+## 10. Stall Guard & Terminal Event Streaming (June 18, 2026)
+
+To detect motor blocks and stream asynchronous safety events to the user interface:
+
+### A. Acceleration-Based Stall Guard
+- Implemented **Stall Guard** inside the background IMU thread to detect when the motors are running but the robot cannot move (e.g. high friction, caught under low clearance, or stuck against obstacles at speeds too low to trigger voltage-sag protections).
+- **Logic**: When transitioning to a new drive command (`forward` or `backward`), a timer starts and monitors linear acceleration surge:
+  - Expects a change in the driving axis of at least $0.3 \text{ m/s}^2$ relative to the start.
+  - If the surge is registered, monitoring finishes.
+  - If **1.2 seconds** pass without detecting the surge, Stall Guard triggers: it stops the car (`px.stop()`), sets speed to `0`, sets direction to `"stop"`, flags `stall_triggered = True` (glowing red dashboard border/badge), and logs the event.
+  - Normal operation resumes automatically upon receiving a new manual command.
+
+### B. Event Log Queue & Telemetry Stream
+- Established a server-side logs queue (`robot_logs`) inside `server.py` to capture asynchronous warnings (e.g. voltage sag stalls, IMU acceleration stalls, or collision impacts).
+- Unified all endpoint response payloads using a helper `get_telemetry_dict()`, which automatically pops any pending logs and delivers them inline via `/api/telemetry`, `/api/move`, or `/api/camera`.
+- On the client side, `updateTelemetryUI` automatically parses the `logs` array and appends formatted timestamps and messages to the terminal interface in real time.
+
+### C. Clear Terminal UI Button
+- Added a **"Clear Logs"** button next to the **"Execute Script"** button in the Python Code Recipe panel.
+- Clicking the button instantly wipes the terminal console and sets it back to a clean placeholder.
 
