@@ -31,6 +31,7 @@ class AutonomousExplorer:
         self.collision_threshold = 5.0
         self.collision_detected = False
         self.collision_active = False
+        self.collision_direction = "stop"
         
         # Calibration defaults (overwritten by config files)
         self.cliff_threshold = 1000
@@ -80,6 +81,10 @@ class AutonomousExplorer:
                                 self.collision_detected = True
                             else:
                                 self.collision_active = True
+                                if hasattr(self, 'state_dict') and self.state_dict:
+                                    self.collision_direction = self.state_dict.get("direction", "stop")
+                                else:
+                                    self.collision_direction = "stop"
                                 # Stop car immediately in manual mode
                                 with self.i2c_lock:
                                     self.px.stop()

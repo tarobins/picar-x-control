@@ -71,6 +71,7 @@ state = {
     "camera_active": camera_started,
     "direction": "stop"
 }
+explorer.state_dict = state
 
 # Shared sensor readings
 sensor_data = {
@@ -325,14 +326,48 @@ def get_status():
 @app.route('/api/move', methods=['POST'])
 def move_car():
     t_recv = time.time() * 1000.0
-    explorer.collision_active = False # Clear collision lock when receiving a new manual command
+    
+    data = request.get_json(silent=True) or {}
+    action = data.get("action", "stop")
+    
+    # If collision is active, only clear it if we are stopping or driving in the opposite direction.
+    # Adjusting steering shouldn't clear the driving direction collision lock.
+    if explorer.collision_active:
+        collision_dir = getattr(explorer, 'collision_direction', 'stop')
+        if action == "stop":
+            explorer.collision_active = False
+        elif action in ("forward", "backward") and action != collision_dir:
+            explorer.collision_active = False
+            
+    if explorer.collision_active:
+        with i2c_lock:
+            px.stop()
+        state["speed"] = 0
+        state["direction"] = "stop"
+        t_done = time.time() * 1000.0
+        return jsonify({
+            "status": "blocked",
+            "message": f"Collision lock active in direction: {getattr(explorer, 'collision_direction', 'unknown')}",
+            "state": state,
+            "telemetry": {
+                "distance": sensor_data["distance"],
+                "camera_distance": sensor_data["camera_distance"],
+                "grayscale": sensor_data["grayscale"],
+                "accel_x": round(explorer.accel_x, 3),
+                "accel_y": round(explorer.accel_y, 3),
+                "accel_z": round(explorer.accel_z, 3),
+                "state": explorer.state,
+                "collision_active": explorer.collision_active
+            },
+            "t_robot_received": t_recv,
+            "t_robot_done": t_done
+        })
+
     global last_move_time, stall_triggered
     stall_triggered = False
     if not px:
         return jsonify({"status": "error", "message": "Picarx not initialized"}), 500
-    
-    data = request.get_json(silent=True) or {}
-    action = data.get("action", "stop")
+        
     speed = int(data.get("speed", state["speed"]))
     steering_angle = int(data.get("steering_angle", state["steering_angle"]))
     
