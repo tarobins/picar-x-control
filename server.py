@@ -13,6 +13,13 @@ import os
 import psutil
 import threading
 from io import StringIO
+import socket
+import urllib3
+
+# Optimize TCP connection socket settings (Disable Nagle's algorithm)
+urllib3.connection.HTTPConnection.default_socket_options += [
+    (socket.SOL_TCP, socket.TCP_NODELAY, 1)
+]
 
 app = Flask(__name__)
 
@@ -280,6 +287,32 @@ def get_cpu_temp():
     except:
         return 0.0
 
+cached_system_stats = {
+    "cpu_temp": 0.0,
+    "cpu_usage": 0.0,
+    "memory_usage": 0.0
+}
+
+def update_system_stats_loop():
+    global cached_system_stats
+    import psutil
+    while True:
+        try:
+            temp = get_cpu_temp()
+            usage = psutil.cpu_percent(interval=0.1)
+            mem = psutil.virtual_memory()
+            mem_pct = mem.percent
+            cached_system_stats = {
+                "cpu_temp": temp,
+                "cpu_usage": usage,
+                "memory_usage": mem_pct
+            }
+        except Exception as e:
+            pass
+        time.sleep(1.0)
+
+threading.Thread(target=update_system_stats_loop, daemon=True).start()
+
 
 
 @app.route('/api/status', methods=['GET'])
@@ -341,7 +374,11 @@ def move_car():
                 "telemetry": {
                     "distance": sensor_data["distance"],
                     "camera_distance": sensor_data["camera_distance"],
-                    "grayscale": grayscale
+                    "grayscale": grayscale,
+                    "accel_x": round(explorer.accel_x, 3),
+                    "accel_y": round(explorer.accel_y, 3),
+                    "accel_z": round(explorer.accel_z, 3),
+                    "state": explorer.state
                 },
                 "t_robot_received": t_recv,
                 "t_robot_done": t_done
@@ -365,7 +402,11 @@ def move_car():
                 "telemetry": {
                     "distance": sensor_data["distance"],
                     "camera_distance": sensor_data["camera_distance"],
-                    "grayscale": sensor_data["grayscale"]
+                    "grayscale": sensor_data["grayscale"],
+                    "accel_x": round(explorer.accel_x, 3),
+                    "accel_y": round(explorer.accel_y, 3),
+                    "accel_z": round(explorer.accel_z, 3),
+                    "state": explorer.state
                 },
                 "t_robot_received": t_recv,
                 "t_robot_done": t_done
@@ -403,7 +444,11 @@ def move_car():
         "state": state,
         "telemetry": {
             "distance": sensor_data["distance"],
-            "grayscale": sensor_data["grayscale"]
+            "grayscale": sensor_data["grayscale"],
+            "accel_x": round(explorer.accel_x, 3),
+            "accel_y": round(explorer.accel_y, 3),
+            "accel_z": round(explorer.accel_z, 3),
+            "state": explorer.state
         },
         "t_robot_received": t_recv,
         "t_robot_done": t_done
@@ -437,7 +482,11 @@ def control_camera():
         "state": state,
         "telemetry": {
             "distance": sensor_data["distance"],
-            "grayscale": sensor_data["grayscale"]
+            "grayscale": sensor_data["grayscale"],
+            "accel_x": round(explorer.accel_x, 3),
+            "accel_y": round(explorer.accel_y, 3),
+            "accel_z": round(explorer.accel_z, 3),
+            "state": explorer.state
         },
         "t_robot_received": t_recv,
         "t_robot_done": t_done
@@ -478,25 +527,35 @@ def get_telemetry():
     if not px:
         return jsonify({"status": "error", "message": "Picarx not initialized"}), 500
         
-    # Read system info (non-blocking)
-    cpu_temp = get_cpu_temp()
-    cpu_usage = psutil.cpu_percent()
-    mem = psutil.virtual_memory()
-    mem_usage = mem.percent
-    
     return jsonify({
         "status": "success",
+        "accel_x": round(explorer.accel_x, 3),
+        "accel_y": round(explorer.accel_y, 3),
+        "accel_z": round(explorer.accel_z, 3),
+        "state": explorer.state,
         "telemetry": {
             "distance": sensor_data["distance"],
             "camera_distance": sensor_data["camera_distance"],
             "grayscale": sensor_data["grayscale"],
             "battery_voltage": sensor_data["battery_voltage"],
             "stall_triggered": stall_triggered,
-            "cpu_temp": cpu_temp,
-            "cpu_usage": cpu_usage,
-            "memory_usage": mem_usage
+            "cpu_temp": cached_system_stats["cpu_temp"],
+            "cpu_usage": cached_system_stats["cpu_usage"],
+            "memory_usage": cached_system_stats["memory_usage"],
+            "accel_x": round(explorer.accel_x, 3),
+            "accel_y": round(explorer.accel_y, 3),
+            "accel_z": round(explorer.accel_z, 3),
+            "state": explorer.state
         }
     })
+
+@app.route('/api/calibrate/imu_auto', methods=['POST'])
+def trigger_auto_imu_calibration():
+    success = explorer.run_automated_imu_calibration()
+    if success:
+        return jsonify({"status": "success", "message": "IMU Axis orientation dynamically mapped and saved."})
+    else:
+        return jsonify({"status": "error", "message": "Failed to enter calibration state or IMU missing."}), 400
 
 @app.route('/api/execute', methods=['POST'])
 def execute_code():
@@ -539,15 +598,21 @@ def execute_code():
 
 @app.route('/api/map/data', methods=['GET'])
 def get_map_telemetry():
-    return jsonify({
-        "map": grid.get_payload(),
+    # Support no_map query parameter to reduce network payload sizes
+    no_map = request.args.get('no_map', '0') == '1'
+    
+    payload = {
         "ultrasound_distance": explorer.us_dist,
         "camera_distance": explorer.cam_dist,
         "state": explorer.state,
         "x": explorer.x,
         "y": explorer.y,
         "heading": explorer.heading_deg
-    })
+    }
+    if not no_map:
+        payload["map"] = grid.get_payload()
+        
+    return jsonify(payload)
 
 @app.route('/api/explore/start', methods=['POST'])
 def start_explore():

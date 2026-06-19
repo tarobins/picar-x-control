@@ -932,6 +932,24 @@ bk 1</textarea>
             </button>
         </div>
 
+        <div class="telemetry-dashboard-card" style="background:#25252b; padding:15px; border-radius:8px; color:white; margin-top:15px;">
+          <h3>GY-521 Acceleration Telemetry Monitor</h3>
+          <div class="metrics-grid" style="display:flex; gap:20px; font-family:monospace; font-size:1.2rem; margin-bottom:15px;">
+            <div>X (Forward): <span id="accel-x" style="color:#2ed573;">0.00</span> m/s²</div>
+            <div>Y (Lateral): <span id="accel-y" style="color:#ffa502;">0.00</span> m/s²</div>
+            <div>Z (Vertical): <span id="accel-z" style="color:#1e90ff;">0.00</span> m/s²</div>
+          </div>
+          
+          <div class="calibration-action-box">
+            <button id="btn-auto-imu" onclick="runKinematicImuCalibrate()" style="background:#ff4757; color:white; padding:10px 15px; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">
+              ⚡ Run Kinematic Auto-Orientation Calibration
+            </button>
+            <p style="font-size:0.85rem; color:#aaccff; margin-top:5px;">
+              *Warning: Ensure the PiCar-X is placed flat on an open, level floor space before execution. It will drive forward and turn to resolve coordinate vectors.*
+            </p>
+          </div>
+        </div>
+
     </div>
 
     <script>
@@ -1787,6 +1805,13 @@ else:
                 cell.title = `ADC: ${value}`;
             }
 
+            // GY-521 IMU Telemetry
+            if (tel.accel_x !== undefined) {
+                document.getElementById('accel-x').innerText = tel.accel_x.toFixed(2);
+                document.getElementById('accel-y').innerText = tel.accel_y.toFixed(2);
+                document.getElementById('accel-z').innerText = tel.accel_z.toFixed(2);
+            }
+
             // Diagnostics
             if (tel.cpu_temp !== undefined) {
                 document.getElementById('diag-temp').textContent = `${tel.cpu_temp}°C`;
@@ -1840,6 +1865,21 @@ else:
                     connBadge.querySelector('.status-dot').style.background = "var(--accent-success)";
 
                     updateTelemetryUI(data.telemetry);
+
+                    // Update IMU calibration button status based on robot state
+                    const robotState = data.state || (data.telemetry && data.telemetry.state);
+                    const btn = document.getElementById('btn-auto-imu');
+                    if (btn && robotState) {
+                        if (robotState === "CALIBRATING") {
+                            btn.innerText = "🔄 Calibrating Hardware... Driving Loop Active";
+                            btn.disabled = true;
+                            btn.style.opacity = 0.5;
+                        } else {
+                            btn.innerText = "⚡ Run Kinematic Auto-Orientation Calibration";
+                            btn.disabled = false;
+                            btn.style.opacity = 1.0;
+                        }
+                    }
                 }
             })
             .catch(err => {
@@ -1851,7 +1891,7 @@ else:
             });
         }
 
-        // Start polling loop (throttled to 1.5s since commands fetch telemetry inline)
+        // Start polling loop (throttled to 1.5s since driving/camera commands fetch telemetry inline)
         setInterval(pollTelemetry, 1500);
 
         // Fetch initial status
@@ -2297,8 +2337,29 @@ fd 3`
             }
         });
 
+        let lastMapFetchTime = 0;
+
         function pollSlam() {
-            fetch('/api/map/data')
+            const now = Date.now();
+            // Fetch map if it's the first time, or if the robot is exploring (fetch every 3s), 
+            // or if idle/calibrating fetch very slowly (every 10s) to keep bandwidth clean
+            let fetchMap = false;
+            const currentState = document.getElementById('slam-mode-val').innerText;
+            if (lastMapFetchTime === 0) {
+                fetchMap = true;
+            } else if (currentState === "EXPLORING") {
+                if (now - lastMapFetchTime > 3000) {
+                    fetchMap = true;
+                }
+            } else {
+                if (now - lastMapFetchTime > 10000) {
+                    fetchMap = true;
+                }
+            }
+            
+            const url = fetchMap ? '/api/map/data' : '/api/map/data?no_map=1';
+            
+            fetch(url)
             .then(res => res.json())
             .then(data => {
                 document.getElementById('slam-mode-val').innerText = data.state;
@@ -2313,12 +2374,28 @@ fd 3`
 
                 if (data.map) {
                     drawMap(data.map, data.x, data.y, data.heading);
+                    lastMapFetchTime = now;
                 }
             })
             .catch(err => console.error("SLAM Poll Error:", err));
         }
 
         setInterval(pollSlam, 1000);
+
+        window.runKinematicImuCalibrate = function() {
+            if(!confirm("Confirm car is on open flat floor space. Execute movement sequence?")) return;
+            
+            fetch('/api/calibrate/imu_auto', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    alert(data.message);
+                } else {
+                    alert("Calibration Error: " + data.message);
+                }
+            })
+            .catch(err => alert("Calibration Error: " + err.message));
+        }
 
         // Initialize Page
         fetchStatus();

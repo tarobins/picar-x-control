@@ -6,6 +6,13 @@ import os
 import argparse
 import time
 import json
+import socket
+import urllib3
+
+# Optimize TCP connection socket settings (Disable Nagle's algorithm)
+urllib3.connection.HTTPConnection.default_socket_options += [
+    (socket.SOL_TCP, socket.TCP_NODELAY, 1)
+]
 
 app = Flask(__name__, template_folder='templates')
 
@@ -83,10 +90,11 @@ def camera_switch():
 
 @app.route('/api/telemetry', methods=['GET'])
 def get_telemetry():
-    telemetry = picar_client.get_telemetry()
-    if telemetry is not None:
-        return jsonify({"status": "success", "telemetry": telemetry})
-    return jsonify({"status": "error", "message": "Robot connection failed"}), 503
+    try:
+        r = requests.get(f"{picar_client.BASE_URL}/api/telemetry", timeout=3)
+        return jsonify(r.json()), r.status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": "Robot connection failed: " + str(e)}), 503
 
 @app.route('/api/execute', methods=['POST'])
 def execute_code():
@@ -100,7 +108,7 @@ def execute_code():
 @app.route('/api/map/data', methods=['GET'])
 def get_map_telemetry():
     try:
-        r = requests.get(f"{picar_client.BASE_URL}/api/map/data", timeout=3)
+        r = requests.get(f"{picar_client.BASE_URL}/api/map/data", params=request.args, timeout=3)
         return jsonify(r.json()), r.status_code
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 503
@@ -166,6 +174,15 @@ def save_calibration():
 def get_calibration_config():
     try:
         r = requests.get(f"{picar_client.BASE_URL}/api/calibrate/config", timeout=3)
+        return jsonify(r.json()), r.status_code
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 503
+
+@app.route('/api/calibrate/imu_auto', methods=['POST'])
+def trigger_auto_imu_calibration():
+    try:
+        # Increase timeout because physical calibration drives and turns (about 2.5 seconds total runtime)
+        r = requests.post(f"{picar_client.BASE_URL}/api/calibrate/imu_auto", timeout=10)
         return jsonify(r.json()), r.status_code
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 503

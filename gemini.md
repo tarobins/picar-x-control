@@ -194,3 +194,23 @@ To improve navigation reliability, resolve API edge-case exceptions, and safegua
 * **Features**: Added a `Reset` button to the SLAM control grid in `templates/index.html`.
 * **Flow**: Triggers `/api/map/reset` which calls `grid.reset_map()` (erasing the occupancy grid array in `mapping.py` and writing a blank file) and resets the robot's odometry tracking coordinates (`x`, `y`, `heading_deg`) back to `0`.
 
+---
+
+## 8. GY-521 IMU Real-Time Telemetry & Kinematic Auto-Orientation (June 18, 2026)
+
+To support real-time 3-axis acceleration monitoring and auto-calibration:
+
+### A. Core Library Installation
+- Installs `mpu6050-raspberrypi` and its prerequisite hardware communication driver `smbus` on the robot's system Python runtime.
+- Command to install manually on the robot:
+  ```bash
+  ssh robot "pip3 install mpu6050-raspberrypi smbus --break-system-packages"
+  ```
+
+### B. Auto-Orientation Kinematic Logic
+Because the sensor can be physically mounted in any arbitrary layout, the calibration sequence dynamically determines the coordinate mapping:
+1. **Vertical ($Z$)**: Samples stationary baseline; the axis closest to $9.81 \text{ m/s}^2$ is vertical ($Z$), resolving sign based on positive/negative direction.
+2. **Longitudinal ($X$)**: Sudden straight forward pulse detects the axis with the largest variance spike (mapped as forward $X$).
+3. **Lateral ($Y$)**: Designated as the remaining axis, verifying sign direction via centripetal acceleration during a sharp counter-clockwise turn.
+- Configuration maps and signs are persistently saved to `data/calibration_config.json` (`imu_axis_map` and `imu_axis_signs`).
+- Telemetry variables `accel_x`, `accel_y`, and `accel_z` are exposed at the top level of `/api/telemetry` along with robot `state`.

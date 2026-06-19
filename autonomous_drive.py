@@ -12,6 +12,23 @@ class AutonomousExplorer:
         self.vision = vision
         self.state = "IDLE" # Modes: IDLE, CALIBRATING, EXPLORING
         
+        # Initialize IMU (GY-521 Default Address is 0x68)
+        try:
+            from mpu6050 import mpu6050
+            with self.i2c_lock:
+                self.imu = mpu6050(0x68)
+        except Exception as e:
+            print(f"Error initializing IMU: {e}")
+            self.imu = None
+            
+        # Raw Live Acceleration values
+        self.accel_x, self.accel_y, self.accel_z = 0.0, 0.0, 0.0
+        
+        # Dynamic Orientation Map Defaults
+        self.axis_map = {"x": "x", "y": "y", "z": "z"}
+        self.axis_signs = {"x": 1, "y": 1, "z": 1}
+        self.axis_offsets = {"x": 0.0, "y": 0.0, "z": 0.0}
+        
         # Calibration defaults (overwritten by config files)
         self.cliff_threshold = 1000
         self.steering_offset = 0
@@ -21,6 +38,29 @@ class AutonomousExplorer:
         # State Tracking (Odometry)
         self.x, self.y, self.heading_deg = 0.0, 0.0, 0.0
         self.us_dist, self.cam_dist = 999, 999
+        
+        # Start a background thread to update live telemetry
+        threading.Thread(target=self._telemetry_stream_loop, daemon=True).start()
+
+    def _telemetry_stream_loop(self):
+        """Continuously reads raw IMU values and maps them using calibrated profiles."""
+        while True:
+            if self.imu:
+                try:
+                    with self.i2c_lock:
+                        raw_accel = self.imu.get_accel_data()
+                    # Apply mappings and zero-g offsets dynamically
+                    mapped = {
+                        "x": raw_accel[self.axis_map["x"]] * self.axis_signs["x"],
+                        "y": raw_accel[self.axis_map["y"]] * self.axis_signs["y"],
+                        "z": raw_accel[self.axis_map["z"]] * self.axis_signs["z"]
+                    }
+                    self.accel_x = mapped["x"] - self.axis_offsets.get("x", 0.0)
+                    self.accel_y = mapped["y"] - self.axis_offsets.get("y", 0.0)
+                    self.accel_z = mapped["z"] - self.axis_offsets.get("z", 0.0)
+                except Exception:
+                    pass
+            time.sleep(0.1) # 10 Hz updates to balance responsiveness and bus load
 
     def load_calibration_config(self):
         try:
@@ -35,6 +75,13 @@ class AutonomousExplorer:
                     self.vision.focal_length = config.get("focal_length", 350.0)
                     self.floor_sample = config.get("floor_sample", None)
                     self.air_sample = config.get("air_sample", None)
+                    
+                    # Load IMU configurations if they exist
+                    if "imu_axis_map" in config:
+                        self.axis_map = config["imu_axis_map"]
+                        self.axis_signs = config["imu_axis_signs"]
+                    if "imu_axis_offsets" in config:
+                        self.axis_offsets = config["imu_axis_offsets"]
             else:
                 self.floor_sample = None
                 self.air_sample = None
@@ -161,3 +208,114 @@ class AutonomousExplorer:
         while self.state == "EXPLORING":
             time.sleep(5)
             self.grid.save_map()
+
+    def run_automated_imu_calibration(self):
+        """Executes a physical movement sequence to map axes dynamically."""
+        if self.state == "EXPLORING" or not self.imu:
+            return False
+            
+        self.state = "CALIBRATING"
+        try:
+            with self.i2c_lock:
+                self.px.stop()
+            time.sleep(1.0) # Settle down car completely
+            
+            # --- STEP 1: Find Z (Vertical Gravity Vector) ---
+            with self.i2c_lock:
+                raw_start = self.imu.get_accel_data()
+            best_axis = "z"
+            max_val = 0
+            for axis in ['x', 'y', 'z']:
+                if abs(raw_start[axis]) > max_val:
+                    max_val = abs(raw_start[axis])
+                    best_axis = axis
+                    
+            self.axis_map["z"] = best_axis
+            self.axis_signs["z"] = 1 if raw_start[best_axis] > 0 else -1
+            
+            remaining_axes = ['x', 'y', 'z']
+            remaining_axes.remove(best_axis)
+            
+            # --- STEP 2: Find X (Forward Linear Acceleration Surge) ---
+            # Pulse forward rapidly
+            with self.i2c_lock:
+                self.px.set_dir_servo_angle(self.steering_offset)
+                self.px.forward(50)
+            time.sleep(0.4)
+            with self.i2c_lock:
+                raw_motion = self.imu.get_accel_data()
+                self.px.stop()
+            
+            # Evaluate variance spike
+            spike_axis = remaining_axes[0]
+            diff_0 = raw_motion[remaining_axes[0]] - raw_start[remaining_axes[0]]
+            diff_1 = raw_motion[remaining_axes[1]] - raw_start[remaining_axes[1]]
+            
+            if abs(diff_1) > abs(diff_0):
+                spike_axis = remaining_axes[1]
+                forward_diff = diff_1
+            else:
+                forward_diff = diff_0
+                
+            self.axis_map["x"] = spike_axis
+            self.axis_signs["x"] = 1 if forward_diff > 0 else -1
+            
+            # --- STEP 3: Assign Y (Lateral Vector Coordination) ---
+            remaining_axes.remove(spike_axis)
+            self.axis_map["y"] = remaining_axes[0]
+            
+            # Turn sharp left to establish Y sign conventions via centripetal force
+            with self.i2c_lock:
+                self.px.set_dir_servo_angle(-30 + self.steering_offset)
+                self.px.forward(30)
+            time.sleep(0.5)
+            with self.i2c_lock:
+                raw_turn = self.imu.get_accel_data()
+                self.px.stop()
+                self.px.set_dir_servo_angle(self.steering_offset)
+            
+            turn_diff = raw_turn[self.axis_map["y"]] - raw_start[self.axis_map["y"]]
+            self.axis_signs["y"] = 1 if turn_diff > 0 else -1
+            
+            # --- STEP 4: Calculate Zero-G compensation offsets ---
+            # Sample mapped acceleration from the initial stationary state raw_start
+            mapped_start = {
+                "x": raw_start[self.axis_map["x"]] * self.axis_signs["x"],
+                "y": raw_start[self.axis_map["y"]] * self.axis_signs["y"],
+                "z": raw_start[self.axis_map["z"]] * self.axis_signs["z"]
+            }
+            # X and Y should resolve to 0.0, Z should resolve to 9.81 m/s²
+            self.axis_offsets["x"] = mapped_start["x"]
+            self.axis_offsets["y"] = mapped_start["y"]
+            self.axis_offsets["z"] = mapped_start["z"] - 9.81
+            
+            # Save structural adjustments safely to flash config file
+            self.save_imu_calibration()
+        except Exception as e:
+            print(f"Error during IMU calibration: {e}")
+            self.state = "IDLE"
+            return False
+            
+        self.state = "IDLE"
+        return True
+
+    def save_imu_calibration(self):
+        config_path = "data/calibration_config.json"
+        if not os.path.exists("data") and not os.path.exists(config_path):
+            home_config = os.path.expanduser("~/data/calibration_config.json")
+            if os.path.exists(os.path.dirname(home_config)) or os.path.exists(home_config):
+                config_path = home_config
+                
+        config = {}
+        try:
+            with open(config_path, "r") as f:
+                config = json.load(f)
+        except FileNotFoundError:
+            os.makedirs(os.path.dirname(config_path), exist_ok=True)
+            
+        config["imu_axis_map"] = self.axis_map
+        config["imu_axis_signs"] = self.axis_signs
+        config["imu_axis_offsets"] = self.axis_offsets
+        
+        with open(config_path, "w") as f:
+            json.dump(config, f)
