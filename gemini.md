@@ -214,3 +214,24 @@ Because the sensor can be physically mounted in any arbitrary layout, the calibr
 3. **Lateral ($Y$)**: Designated as the remaining axis, verifying sign direction via centripetal acceleration during a sharp counter-clockwise turn.
 - Configuration maps and signs are persistently saved to `data/calibration_config.json` (`imu_axis_map` and `imu_axis_signs`).
 - Telemetry variables `accel_x`, `accel_y`, and `accel_z` are exposed at the top level of `/api/telemetry` along with robot `state`.
+
+---
+
+## 9. IMU-Based Collision Detection & Obstacle Avoidance (June 18, 2026)
+
+To protect the robot from sudden physical impacts from any direction:
+
+### A. Jerk/Shock Calculation
+- The 10 Hz background telemetry thread calculates the Euclidean norm of the acceleration delta (jerk vector) across all 3 axes between consecutive samples:
+  $$jerk = \sqrt{(\Delta a_x)^2 + (\Delta a_y)^2 + (\Delta a_z)^2}$$
+- If $jerk > 5.0 \text{ m/s}^2$ (default threshold, configurable in `calibration_config.json` via `"collision_threshold"`), a collision event is triggered.
+
+### B. Manual Mode Auto-Stop
+- In manual mode, a triggered collision stops the robot immediately (`px.stop()`) and flags `collision_active = True`.
+- **UI Alerting**: The Drive Deck card borders in orange and displays a blinking `COLLISION DETECTED` warning badge.
+- **Lock Release**: Sending any new movement command (e.g. hitting W/A/S/D or manual sliders) automatically resets `collision_active = False`, making the car instantly driveable again.
+
+### C. SLAM Exploration Path Redirection
+- If a collision occurs during SLAM (`EXPLORING` mode), the robot triggers `collision_detected = True`.
+- The autonomous explore loop instantly intercepts the event, stops, reverses backward for 0.6 seconds, turns left 45 degrees, drives forward briefly to clear the obstacle, and replans a new coordinate path.
+
