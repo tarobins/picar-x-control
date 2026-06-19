@@ -325,6 +325,7 @@ def get_status():
 @app.route('/api/move', methods=['POST'])
 def move_car():
     t_recv = time.time() * 1000.0
+    explorer.collision_active = False # Clear collision lock when receiving a new manual command
     global last_move_time, stall_triggered
     stall_triggered = False
     if not px:
@@ -378,7 +379,8 @@ def move_car():
                     "accel_x": round(explorer.accel_x, 3),
                     "accel_y": round(explorer.accel_y, 3),
                     "accel_z": round(explorer.accel_z, 3),
-                    "state": explorer.state
+                    "state": explorer.state,
+                    "collision_active": explorer.collision_active
                 },
                 "t_robot_received": t_recv,
                 "t_robot_done": t_done
@@ -406,7 +408,8 @@ def move_car():
                     "accel_x": round(explorer.accel_x, 3),
                     "accel_y": round(explorer.accel_y, 3),
                     "accel_z": round(explorer.accel_z, 3),
-                    "state": explorer.state
+                    "state": explorer.state,
+                    "collision_active": explorer.collision_active
                 },
                 "t_robot_received": t_recv,
                 "t_robot_done": t_done
@@ -448,7 +451,8 @@ def move_car():
             "accel_x": round(explorer.accel_x, 3),
             "accel_y": round(explorer.accel_y, 3),
             "accel_z": round(explorer.accel_z, 3),
-            "state": explorer.state
+            "state": explorer.state,
+            "collision_active": explorer.collision_active
         },
         "t_robot_received": t_recv,
         "t_robot_done": t_done
@@ -486,7 +490,8 @@ def control_camera():
             "accel_x": round(explorer.accel_x, 3),
             "accel_y": round(explorer.accel_y, 3),
             "accel_z": round(explorer.accel_z, 3),
-            "state": explorer.state
+            "state": explorer.state,
+            "collision_active": explorer.collision_active
         },
         "t_robot_received": t_recv,
         "t_robot_done": t_done
@@ -533,6 +538,7 @@ def get_telemetry():
         "accel_y": round(explorer.accel_y, 3),
         "accel_z": round(explorer.accel_z, 3),
         "state": explorer.state,
+        "collision_active": explorer.collision_active,
         "telemetry": {
             "distance": sensor_data["distance"],
             "camera_distance": sensor_data["camera_distance"],
@@ -545,7 +551,8 @@ def get_telemetry():
             "accel_x": round(explorer.accel_x, 3),
             "accel_y": round(explorer.accel_y, 3),
             "accel_z": round(explorer.accel_z, 3),
-            "state": explorer.state
+            "state": explorer.state,
+            "collision_active": explorer.collision_active
         }
     })
 

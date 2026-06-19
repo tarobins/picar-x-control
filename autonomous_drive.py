@@ -28,6 +28,9 @@ class AutonomousExplorer:
         self.axis_map = {"x": "x", "y": "y", "z": "z"}
         self.axis_signs = {"x": 1, "y": 1, "z": 1}
         self.axis_offsets = {"x": 0.0, "y": 0.0, "z": 0.0}
+        self.collision_threshold = 5.0
+        self.collision_detected = False
+        self.collision_active = False
         
         # Calibration defaults (overwritten by config files)
         self.cliff_threshold = 1000
@@ -44,6 +47,10 @@ class AutonomousExplorer:
 
     def _telemetry_stream_loop(self):
         """Continuously reads raw IMU values and maps them using calibrated profiles."""
+        self._last_accel_x = 0.0
+        self._last_accel_y = 0.0
+        self._last_accel_z = 0.0
+        
         while True:
             if self.imu:
                 try:
@@ -58,6 +65,28 @@ class AutonomousExplorer:
                     self.accel_x = mapped["x"] - self.axis_offsets.get("x", 0.0)
                     self.accel_y = mapped["y"] - self.axis_offsets.get("y", 0.0)
                     self.accel_z = mapped["z"] - self.axis_offsets.get("z", 0.0)
+                    
+                    # Calculate difference (jerk/shock) from previous sample
+                    dx = self.accel_x - self._last_accel_x
+                    dy = self.accel_y - self._last_accel_y
+                    dz = self.accel_z - self._last_accel_z
+                    shock = math.sqrt(dx*dx + dy*dy + dz*dz)
+                    
+                    # Skip initial/settling comparison spikes if previous sample was zero
+                    if self._last_accel_x != 0.0 or self._last_accel_y != 0.0:
+                        if shock > self.collision_threshold:
+                            print(f"[IMU SHOCK] Shock detected: {shock:.2f} m/s^2!")
+                            if self.state == "EXPLORING":
+                                self.collision_detected = True
+                            else:
+                                self.collision_active = True
+                                # Stop car immediately in manual mode
+                                with self.i2c_lock:
+                                    self.px.stop()
+                                    
+                    self._last_accel_x = self.accel_x
+                    self._last_accel_y = self.accel_y
+                    self._last_accel_z = self.accel_z
                 except Exception:
                     pass
             time.sleep(0.1) # 10 Hz updates to balance responsiveness and bus load
@@ -82,6 +111,8 @@ class AutonomousExplorer:
                         self.axis_signs = config["imu_axis_signs"]
                     if "imu_axis_offsets" in config:
                         self.axis_offsets = config["imu_axis_offsets"]
+                    if "collision_threshold" in config:
+                        self.collision_threshold = config["collision_threshold"]
             else:
                 self.floor_sample = None
                 self.air_sample = None
@@ -113,6 +144,27 @@ class AutonomousExplorer:
     def explore_loop(self):
         last_time = time.time()
         while self.state == "EXPLORING":
+            if getattr(self, 'collision_detected', False):
+                print("[Collision Override] Impact detected! Halting, backing away, and turning.")
+                self.collision_detected = False
+                try:
+                    with self.i2c_lock:
+                        self.px.stop()
+                        self.px.backward(30)
+                    time.sleep(0.6)
+                    # Turn sharp in a different direction (left 45 degrees) to clear obstacle
+                    with self.i2c_lock:
+                        self.px.set_dir_servo_angle(30 + self.steering_offset)
+                        self.px.forward(20)
+                    time.sleep(0.5)
+                    self.heading_deg += 45.0
+                    with self.i2c_lock:
+                        self.px.set_dir_servo_angle(self.steering_offset)
+                except Exception as e:
+                    print(f"Error executing collision avoidance: {e}")
+                last_time = time.time()
+                continue
+                
             if self.check_cliff():
                 print("[Cliff Override] Cliff detected! Halting and backing away.")
                 try:

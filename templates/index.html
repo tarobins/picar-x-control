@@ -598,6 +598,10 @@
                     <span class="status-dot animate-pulse" style="background: var(--accent-danger); width: 6px; height: 6px; border-radius: 50%;"></span>
                     MOTOR STALLED
                 </div>
+                <div id="collision-warning-badge" style="display: none; background: rgba(255, 165, 0, 0.2); color: #ffa502; border: 1px solid #ffa502; border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.75rem; font-weight: 700; align-items: center; gap: 0.3rem;">
+                    <span class="status-dot animate-pulse" style="background: #ffa502; width: 6px; height: 6px; border-radius: 50%;"></span>
+                    COLLISION DETECTED
+                </div>
             </div>
 
             <div class="drive-grid">
@@ -1836,15 +1840,24 @@ else:
             }
 
             const stallBadge = document.getElementById('stall-warning-badge');
+            const collisionBadge = document.getElementById('collision-warning-badge');
             const driveCard = document.getElementById('drive-deck-card');
+            
             if (tel.stall_triggered) {
                 if (stallBadge) stallBadge.style.display = 'flex';
                 if (driveCard) {
                     driveCard.style.boxShadow = '0 0 15px rgba(220, 53, 69, 0.4)';
                     driveCard.style.borderColor = 'var(--accent-danger)';
                 }
+            } else if (tel.collision_active) {
+                if (collisionBadge) collisionBadge.style.display = 'flex';
+                if (driveCard) {
+                    driveCard.style.boxShadow = '0 0 15px rgba(255, 165, 0, 0.4)';
+                    driveCard.style.borderColor = '#ffa502';
+                }
             } else {
                 if (stallBadge) stallBadge.style.display = 'none';
+                if (collisionBadge) collisionBadge.style.display = 'none';
                 if (driveCard) {
                     driveCard.style.boxShadow = 'none';
                     driveCard.style.borderColor = '';
