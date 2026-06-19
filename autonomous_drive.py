@@ -52,6 +52,12 @@ class AutonomousExplorer:
         self._last_accel_y = 0.0
         self._last_accel_z = 0.0
         
+        self.movement_state = "stop"
+        self.movement_monitoring = False
+        self.movement_start_time = 0.0
+        self.movement_initial_accel_x = 0.0
+        self.movement_peak_accel_change = 0.0
+        
         while True:
             if self.imu:
                 try:
@@ -85,9 +91,45 @@ class AutonomousExplorer:
                                     self.collision_direction = self.state_dict.get("direction", "stop")
                                 else:
                                     self.collision_direction = "stop"
+                                if hasattr(self, 'log_callback') and self.log_callback:
+                                    self.log_callback(f"Collision detected going {self.collision_direction.upper()} (Shock: {shock:.2f} m/s^2)!", "error")
                                 # Stop car immediately in manual mode
                                 with self.i2c_lock:
                                     self.px.stop()
+                                    
+                    # Monitor acceleration surge to detect movement stalls
+                    current_dir = "stop"
+                    if hasattr(self, 'state_dict') and self.state_dict:
+                        current_dir = self.state_dict.get("direction", "stop")
+                        current_speed = self.state_dict.get("speed", 0)
+                        if current_speed == 0:
+                            current_dir = "stop"
+
+                    if current_dir != self.movement_state or self.collision_active:
+                        if not self.collision_active and current_dir in ("forward", "backward"):
+                            self.movement_monitoring = True
+                            self.movement_start_time = time.time()
+                            self.movement_initial_accel_x = self.accel_x
+                            self.movement_peak_accel_change = 0.0
+                        else:
+                            self.movement_monitoring = False
+                        self.movement_state = current_dir
+
+                    if self.movement_monitoring:
+                        diff_accel_x = self.accel_x - self.movement_initial_accel_x
+                        if self.movement_state == "forward":
+                            self.movement_peak_accel_change = max(self.movement_peak_accel_change, diff_accel_x)
+                        else:  # backward
+                            self.movement_peak_accel_change = max(self.movement_peak_accel_change, -diff_accel_x)
+
+                        if self.movement_peak_accel_change >= 0.3:
+                            self.movement_monitoring = False
+                        else:
+                            elapsed = time.time() - self.movement_start_time
+                            if elapsed > 1.2:
+                                self.movement_monitoring = False
+                                if hasattr(self, 'trigger_stall_callback') and self.trigger_stall_callback:
+                                    self.trigger_stall_callback(f"Stall Guard: No acceleration surge detected ({self.movement_state.upper()})!")
                                     
                     self._last_accel_x = self.accel_x
                     self._last_accel_y = self.accel_y

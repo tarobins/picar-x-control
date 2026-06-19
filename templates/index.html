@@ -740,10 +740,15 @@ px.stop()
 </textarea>
             </div>
 
-            <button class="btn-primary" id="btn-run-code">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                Execute Script
-            </button>
+            <div style="display: flex; gap: 0.5rem; width: 100%; margin-bottom: 0.5rem;">
+                <button class="btn-primary" id="btn-run-code" style="flex: 1; margin: 0;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align: middle; margin-right: 0.2rem;"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    Execute Script
+                </button>
+                <button class="btn-primary" id="btn-clear-logs" style="flex: none; background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid rgba(255,255,255,0.1); padding: 0.5rem 1rem; width: auto; font-weight: 600; display: flex; align-items: center; gap: 0.3rem; margin: 0;" title="Clear Output Log Window">
+                    Clear Logs
+                </button>
+            </div>
 
             <div class="console-term" id="console-output">
                 <div class="term-line" style="color: var(--text-muted)">// Output logs will display here...</div>
@@ -1723,6 +1728,13 @@ else:
             }
         });
 
+        const btnClearLogs = document.getElementById('btn-clear-logs');
+        if (btnClearLogs) {
+            btnClearLogs.addEventListener('click', () => {
+                consoleOutput.innerHTML = '<div class="term-line" style="color: var(--text-muted)">// Terminal logs cleared.</div>';
+            });
+        }
+
         function appendTerminal(text, className = '') {
             const line = document.createElement('div');
             line.className = `term-line ${className}`;
@@ -1733,6 +1745,14 @@ else:
 
         function updateTelemetryUI(tel) {
             if (!tel) return;
+
+            // Process any asynchronous logs from the server
+            if (tel.logs && tel.logs.length > 0) {
+                tel.logs.forEach(log => {
+                    const cls = log.level === 'error' ? 'term-err' : 'term-out';
+                    appendTerminal(`[${log.time}] ${log.message}`, cls);
+                });
+            }
 
             // Ultrasound distance
             const usVal = tel.distance;

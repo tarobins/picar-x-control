@@ -73,6 +73,46 @@ state = {
 }
 explorer.state_dict = state
 
+robot_logs = []
+
+def log_robot_event(msg, level="info"):
+    timestamp = time.strftime("%H:%M:%S")
+    robot_logs.append({"time": timestamp, "message": msg, "level": level})
+    print(f"[{level.upper()}] {msg}")
+
+def trigger_stall(message):
+    global stall_triggered
+    stall_triggered = True
+    log_robot_event(message, "error")
+    with i2c_lock:
+        if px:
+            px.stop()
+    state["speed"] = 0
+    state["direction"] = "stop"
+
+def get_telemetry_dict():
+    logs_to_send = list(robot_logs)
+    robot_logs.clear()
+    return {
+        "distance": sensor_data["distance"],
+        "camera_distance": sensor_data["camera_distance"],
+        "grayscale": sensor_data["grayscale"],
+        "battery_voltage": sensor_data["battery_voltage"],
+        "stall_triggered": stall_triggered,
+        "cpu_temp": cached_system_stats["cpu_temp"],
+        "cpu_usage": cached_system_stats["cpu_usage"],
+        "memory_usage": cached_system_stats["memory_usage"],
+        "accel_x": round(explorer.accel_x, 3),
+        "accel_y": round(explorer.accel_y, 3),
+        "accel_z": round(explorer.accel_z, 3),
+        "state": explorer.state,
+        "collision_active": explorer.collision_active,
+        "logs": logs_to_send
+    }
+
+explorer.log_callback = log_robot_event
+explorer.trigger_stall_callback = trigger_stall
+
 # Shared sensor readings
 sensor_data = {
     "distance": -1.0,
@@ -184,13 +224,7 @@ def safety_watchdog():
                             consecutive_sags = max(0, consecutive_sags - 1)
                         
                         if consecutive_sags >= 5: # 250ms of sustained sag
-                            print(f"Watchdog Stall Protection: Stall detected! Sag={sag:.2f}V (Idle: {idle_voltage:.2f}V, Current: {voltage:.2f}V). Stopping!")
-                            global stall_triggered
-                            stall_triggered = True
-                            with i2c_lock:
-                                px.stop()
-                            state["speed"] = 0
-                            state["direction"] = "stop"
+                            trigger_stall(f"Watchdog Stall Protection: Voltage sag of {sag:.2f}V detected!")
                             if explorer.state == "EXPLORING":
                                 explorer.stop_exploration()
                             consecutive_sags = 0
@@ -349,16 +383,7 @@ def move_car():
             "status": "blocked",
             "message": f"Collision lock active in direction: {getattr(explorer, 'collision_direction', 'unknown')}",
             "state": state,
-            "telemetry": {
-                "distance": sensor_data["distance"],
-                "camera_distance": sensor_data["camera_distance"],
-                "grayscale": sensor_data["grayscale"],
-                "accel_x": round(explorer.accel_x, 3),
-                "accel_y": round(explorer.accel_y, 3),
-                "accel_z": round(explorer.accel_z, 3),
-                "state": explorer.state,
-                "collision_active": explorer.collision_active
-            },
+            "telemetry": get_telemetry_dict(),
             "t_robot_received": t_recv,
             "t_robot_done": t_done
         })
@@ -407,16 +432,7 @@ def move_car():
                 "status": "blocked",
                 "message": "Cliff detected in front!",
                 "state": state,
-                "telemetry": {
-                    "distance": sensor_data["distance"],
-                    "camera_distance": sensor_data["camera_distance"],
-                    "grayscale": grayscale,
-                    "accel_x": round(explorer.accel_x, 3),
-                    "accel_y": round(explorer.accel_y, 3),
-                    "accel_z": round(explorer.accel_z, 3),
-                    "state": explorer.state,
-                    "collision_active": explorer.collision_active
-                },
+                "telemetry": get_telemetry_dict(),
                 "t_robot_received": t_recv,
                 "t_robot_done": t_done
             })
@@ -436,16 +452,7 @@ def move_car():
                 "status": "blocked",
                 "message": "Obstacle in front!",
                 "state": state,
-                "telemetry": {
-                    "distance": sensor_data["distance"],
-                    "camera_distance": sensor_data["camera_distance"],
-                    "grayscale": sensor_data["grayscale"],
-                    "accel_x": round(explorer.accel_x, 3),
-                    "accel_y": round(explorer.accel_y, 3),
-                    "accel_z": round(explorer.accel_z, 3),
-                    "state": explorer.state,
-                    "collision_active": explorer.collision_active
-                },
+                "telemetry": get_telemetry_dict(),
                 "t_robot_received": t_recv,
                 "t_robot_done": t_done
             })
@@ -480,15 +487,7 @@ def move_car():
     return jsonify({
         "status": "success",
         "state": state,
-        "telemetry": {
-            "distance": sensor_data["distance"],
-            "grayscale": sensor_data["grayscale"],
-            "accel_x": round(explorer.accel_x, 3),
-            "accel_y": round(explorer.accel_y, 3),
-            "accel_z": round(explorer.accel_z, 3),
-            "state": explorer.state,
-            "collision_active": explorer.collision_active
-        },
+        "telemetry": get_telemetry_dict(),
         "t_robot_received": t_recv,
         "t_robot_done": t_done
     })
@@ -519,15 +518,7 @@ def control_camera():
     return jsonify({
         "status": "success",
         "state": state,
-        "telemetry": {
-            "distance": sensor_data["distance"],
-            "grayscale": sensor_data["grayscale"],
-            "accel_x": round(explorer.accel_x, 3),
-            "accel_y": round(explorer.accel_y, 3),
-            "accel_z": round(explorer.accel_z, 3),
-            "state": explorer.state,
-            "collision_active": explorer.collision_active
-        },
+        "telemetry": get_telemetry_dict(),
         "t_robot_received": t_recv,
         "t_robot_done": t_done
     })
@@ -567,28 +558,15 @@ def get_telemetry():
     if not px:
         return jsonify({"status": "error", "message": "Picarx not initialized"}), 500
         
+    tel_dict = get_telemetry_dict()
     return jsonify({
         "status": "success",
-        "accel_x": round(explorer.accel_x, 3),
-        "accel_y": round(explorer.accel_y, 3),
-        "accel_z": round(explorer.accel_z, 3),
-        "state": explorer.state,
-        "collision_active": explorer.collision_active,
-        "telemetry": {
-            "distance": sensor_data["distance"],
-            "camera_distance": sensor_data["camera_distance"],
-            "grayscale": sensor_data["grayscale"],
-            "battery_voltage": sensor_data["battery_voltage"],
-            "stall_triggered": stall_triggered,
-            "cpu_temp": cached_system_stats["cpu_temp"],
-            "cpu_usage": cached_system_stats["cpu_usage"],
-            "memory_usage": cached_system_stats["memory_usage"],
-            "accel_x": round(explorer.accel_x, 3),
-            "accel_y": round(explorer.accel_y, 3),
-            "accel_z": round(explorer.accel_z, 3),
-            "state": explorer.state,
-            "collision_active": explorer.collision_active
-        }
+        "accel_x": tel_dict["accel_x"],
+        "accel_y": tel_dict["accel_y"],
+        "accel_z": tel_dict["accel_z"],
+        "state": tel_dict["state"],
+        "collision_active": tel_dict["collision_active"],
+        "telemetry": tel_dict
     })
 
 @app.route('/api/calibrate/imu_auto', methods=['POST'])
