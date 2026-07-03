@@ -249,6 +249,25 @@
             color: var(--text-muted);
         }
 
+        /* Toggle Switch CSS */
+        .switch input:checked + span {
+            background-color: #2ed573 !important;
+        }
+        .switch input:checked + span:before {
+            transform: translateX(20px);
+        }
+        .switch span:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
         .slider-label span.val {
             color: var(--accent-primary);
             font-weight: 600;
@@ -942,7 +961,16 @@ bk 1</textarea>
         </div>
 
         <div class="telemetry-dashboard-card" style="background:#25252b; padding:15px; border-radius:8px; color:white; margin-top:15px;">
-          <h3>GY-521 Acceleration Telemetry Monitor</h3>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+            <h3 style="margin:0;">GY-521 Acceleration Telemetry Monitor</h3>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span id="imu-status-text" style="font-size:0.8rem; color:#888;">Active</span>
+              <label class="switch" style="position:relative; display:inline-block; width:44px; height:24px; margin:0;">
+                <input type="checkbox" id="toggle-imu-checkbox" checked onchange="toggleImuStatus(this.checked)" style="opacity:0; width:0; height:0;">
+                <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:#ff4757; transition:.4s; border-radius:24px;"></span>
+              </label>
+            </div>
+          </div>
           <div class="metrics-grid" style="display:flex; gap:20px; font-family:monospace; font-size:1.2rem; margin-bottom:15px;">
             <div>X (Forward): <span id="accel-x" style="color:#2ed573;">0.00</span> m/s²</div>
             <div>Y (Lateral): <span id="accel-y" style="color:#ffa502;">0.00</span> m/s²</div>
@@ -1132,6 +1160,26 @@ else:
                 toggleCameraBtn.textContent = 'Enable Camera';
                 toggleCameraBtn.classList.add('stop-btn');
             }
+        }
+
+        // Toggle IMU Status
+        function toggleImuStatus(active) {
+            const statusText = document.getElementById('imu-status-text');
+            statusText.textContent = active ? "Active" : "Disabled";
+            statusText.style.color = active ? "#888" : "#ff4757";
+            
+            fetch('/api/imu_switch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ active: active })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status !== 'success') {
+                    console.error("Failed to toggle IMU status");
+                }
+            })
+            .catch(err => console.error("Error switching IMU:", err));
         }
 
         // Toggle Camera
@@ -1962,6 +2010,16 @@ else:
                 document.getElementById('steer-slide-val').innerText = data.steering_offset || 0;
                 document.getElementById('threshold-output').innerText = data.cliff_threshold || 1000;
                 document.getElementById('focal-output').innerText = (data.focal_length ? Math.round(data.focal_length) + " px" : "---");
+
+                // Initialize IMU Toggle switch value
+                const imuEnabled = data.imu_enabled !== undefined ? data.imu_enabled : true;
+                const imuCheckbox = document.getElementById('toggle-imu-checkbox');
+                const imuStatusText = document.getElementById('imu-status-text');
+                if (imuCheckbox && imuStatusText) {
+                    imuCheckbox.checked = imuEnabled;
+                    imuStatusText.textContent = imuEnabled ? "Active" : "Disabled";
+                    imuStatusText.style.color = imuEnabled ? "#888" : "#ff4757";
+                }
 
                 if (floorSample !== null) {
                     document.getElementById('floor-sample-val').innerText = Math.round(floorSample);

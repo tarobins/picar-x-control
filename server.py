@@ -105,6 +105,7 @@ def get_telemetry_dict():
         "accel_x": round(explorer.accel_x, 3),
         "accel_y": round(explorer.accel_y, 3),
         "accel_z": round(explorer.accel_z, 3),
+        "imu_enabled": explorer.imu_enabled,
         "state": explorer.state,
         "collision_active": explorer.collision_active,
         "logs": logs_to_send
@@ -564,10 +565,43 @@ def get_telemetry():
         "accel_x": tel_dict["accel_x"],
         "accel_y": tel_dict["accel_y"],
         "accel_z": tel_dict["accel_z"],
+        "imu_enabled": tel_dict["imu_enabled"],
         "state": tel_dict["state"],
         "collision_active": tel_dict["collision_active"],
         "telemetry": tel_dict
     })
+
+@app.route('/api/imu_switch', methods=['POST'])
+def imu_switch():
+    data = request.get_json(silent=True) or {}
+    activate = data.get("active", True)
+    explorer.imu_enabled = activate
+    
+    # Save choice to calibration config
+    config_path = "data/calibration_config.json"
+    config = {}
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                config = json.load(f)
+        except Exception:
+            pass
+    config["imu_enabled"] = activate
+    try:
+        os.makedirs("data", exist_ok=True)
+        with open(config_path, "w") as f:
+            json.dump(config, f)
+    except Exception as e:
+        print(f"Error saving IMU status to config: {e}")
+        
+    # Reset accel read values to zero when turned off
+    if not activate:
+        explorer.accel_x = 0.0
+        explorer.accel_y = 0.0
+        explorer.accel_z = 0.0
+
+    return jsonify({"status": "success", "imu_enabled": explorer.imu_enabled})
+
 
 @app.route('/api/calibrate/imu_auto', methods=['POST'])
 def trigger_auto_imu_calibration():
@@ -727,7 +761,8 @@ def get_calibration_config():
         "cliff_threshold": 1000,
         "focal_length": 350.0,
         "floor_sample": None,
-        "air_sample": None
+        "air_sample": None,
+        "imu_enabled": True
     })
 
 if __name__ == '__main__':

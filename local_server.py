@@ -88,6 +88,18 @@ def camera_switch():
         pass
     return jsonify({"status": "error", "message": "Robot connection failed"}), 503
 
+@app.route('/api/imu_switch', methods=['POST'])
+def imu_switch():
+    data = request.get_json(silent=True) or {}
+    activate = data.get("active", True)
+    try:
+        r = requests.post(f"{picar_client.BASE_URL}/api/imu_switch", json={"active": activate}, timeout=3)
+        if r.status_code == 200:
+            return jsonify(r.json())
+    except Exception as e:
+        pass
+    return jsonify({"status": "error", "message": "Robot connection failed"}), 503
+
 @app.route('/api/telemetry', methods=['GET'])
 def get_telemetry():
     try:

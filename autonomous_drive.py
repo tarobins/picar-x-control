@@ -32,12 +32,15 @@ class AutonomousExplorer:
         self.collision_detected = False
         self.collision_active = False
         self.collision_direction = "stop"
+        self.imu_enabled = True
         self.imu_start_time = time.time()
         
         # Calibration defaults (overwritten by config files)
         self.cliff_threshold = 1000
         self.steering_offset = 0
         self.speed = 15.0  # Measured cm/s speed
+        self.floor_sample = None
+        self.air_sample = None
         self.load_calibration_config()
         
         # State Tracking (Odometry)
@@ -60,7 +63,7 @@ class AutonomousExplorer:
         self.movement_peak_accel_change = 0.0
         
         while True:
-            if self.imu:
+            if self.imu and self.imu_enabled:
                 try:
                     with self.i2c_lock:
                         raw_accel = self.imu.get_accel_data()
@@ -153,6 +156,7 @@ class AutonomousExplorer:
                     self.vision.focal_length = config.get("focal_length", 350.0)
                     self.floor_sample = config.get("floor_sample", None)
                     self.air_sample = config.get("air_sample", None)
+                    self.imu_enabled = config.get("imu_enabled", True)
                     
                     # Load IMU configurations if they exist
                     if "imu_axis_map" in config:
