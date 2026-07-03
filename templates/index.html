@@ -727,7 +727,37 @@
             </div>
         </div>
 
-        <!-- COLUMN 3: Developer Engine & Diagnostics -->
+        <!-- COLUMN 3: GY-521 IMU & Developer Engine -->
+        <div class="card" id="imu-telemetry-card">
+          <div class="card-header" style="justify-content:space-between; align-items:center;">
+            <div class="card-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-activity"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+              GY-521 Acceleration Telemetry Monitor
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span id="imu-status-text" style="font-size:0.8rem; color:#888;">Active</span>
+              <label class="switch" style="position:relative; display:inline-block; width:44px; height:24px; margin:0;">
+                <input type="checkbox" id="toggle-imu-checkbox" checked onchange="toggleImuStatus(this.checked)" style="opacity:0; width:0; height:0;">
+                <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:#ff4757; transition:.4s; border-radius:24px;"></span>
+              </label>
+            </div>
+          </div>
+          <div class="metrics-grid" style="display:flex; gap:20px; font-family:monospace; font-size:1.1rem; margin-bottom:15px; margin-top:10px;">
+            <div>X (Forward): <span id="accel-x" style="color:#2ed573;">0.00</span> m/s²</div>
+            <div>Y (Lateral): <span id="accel-y" style="color:#ffa502;">0.00</span> m/s²</div>
+            <div>Z (Vertical): <span id="accel-z" style="color:#1e90ff;">0.00</span> m/s²</div>
+          </div>
+          
+          <div class="calibration-action-box">
+            <button id="btn-auto-imu" onclick="runKinematicImuCalibrate()" class="btn-primary" style="background:#ff4757; color:white; width:100%; font-weight:bold; margin-bottom: 0.5rem;">
+              ⚡ Run Kinematic Auto-Orientation Calibration
+            </button>
+            <p style="font-size:0.8rem; color:var(--text-muted); margin:0;">
+              *Warning: Ensure the PiCar-X is placed flat on an open, level floor space. It will drive forward and turn to resolve coordinate vectors.*
+            </p>
+          </div>
+        </div>
+
         <div class="card">
             <div class="card-header">
                 <div class="card-title">
@@ -960,32 +990,7 @@ bk 1</textarea>
             </button>
         </div>
 
-        <div class="telemetry-dashboard-card" style="background:#25252b; padding:15px; border-radius:8px; color:white; margin-top:15px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-            <h3 style="margin:0;">GY-521 Acceleration Telemetry Monitor</h3>
-            <div style="display:flex; align-items:center; gap:8px;">
-              <span id="imu-status-text" style="font-size:0.8rem; color:#888;">Active</span>
-              <label class="switch" style="position:relative; display:inline-block; width:44px; height:24px; margin:0;">
-                <input type="checkbox" id="toggle-imu-checkbox" checked onchange="toggleImuStatus(this.checked)" style="opacity:0; width:0; height:0;">
-                <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:#ff4757; transition:.4s; border-radius:24px;"></span>
-              </label>
-            </div>
-          </div>
-          <div class="metrics-grid" style="display:flex; gap:20px; font-family:monospace; font-size:1.2rem; margin-bottom:15px;">
-            <div>X (Forward): <span id="accel-x" style="color:#2ed573;">0.00</span> m/s²</div>
-            <div>Y (Lateral): <span id="accel-y" style="color:#ffa502;">0.00</span> m/s²</div>
-            <div>Z (Vertical): <span id="accel-z" style="color:#1e90ff;">0.00</span> m/s²</div>
-          </div>
-          
-          <div class="calibration-action-box">
-            <button id="btn-auto-imu" onclick="runKinematicImuCalibrate()" style="background:#ff4757; color:white; padding:10px 15px; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">
-              ⚡ Run Kinematic Auto-Orientation Calibration
-            </button>
-            <p style="font-size:0.85rem; color:#aaccff; margin-top:5px;">
-              *Warning: Ensure the PiCar-X is placed flat on an open, level floor space before execution. It will drive forward and turn to resolve coordinate vectors.*
-            </p>
-          </div>
-        </div>
+
 
     </div>
 
