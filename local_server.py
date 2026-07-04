@@ -570,12 +570,75 @@ def ai_driver_loop():
                 if len(ai_logs) > 50:
                     ai_logs.pop(0)
             else:
-                print(f"[AI Driver] Gemini API error: {resp.status_code} - {resp.text}")
-                time.sleep(2.0)
+                err_msg = f"Gemini API Error {resp.status_code}"
+                backoff_time = 5.0
+                
+                if resp.status_code == 429:
+                    err_msg = "Gemini API Quota Exceeded (429). Please wait for rate limit reset."
+                    backoff_time = 15.0
+                    try:
+                        err_json = resp.json()
+                        for detail in err_json.get("error", {}).get("details", []):
+                            if "retryDelay" in detail:
+                                delay_str = detail["retryDelay"]
+                                backoff_time = float(delay_str.rstrip("s")) + 1.0
+                                break
+                    except:
+                        pass
+                
+                print(f"[AI Driver] {err_msg}: {resp.text}")
+                
+                log_entry = {
+                    "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "action": "stop",
+                    "speed": 0,
+                    "steering_angle": 0,
+                    "reasoning": f"ERROR: {err_msg} (Retrying in {int(backoff_time)}s)",
+                    "speak": "Rate limit hit. Pausing.",
+                    "latency_ms": latency,
+                    "sensors": {
+                        "ultrasonic": tel_data.get('distance', -1),
+                        "camera_distance": tel_data.get('camera_distance', -1),
+                        "cliff_grayscale": tel_data.get('grayscale', [0,0,0]),
+                        "battery": tel_data.get('battery_voltage', 0.0)
+                    }
+                }
+                ai_logs.append(log_entry)
+                if len(ai_logs) > 50:
+                    ai_logs.pop(0)
+                
+                # Stop car immediately on API failure
+                try:
+                    requests.post(f"{picar_client.BASE_URL}/api/move", json={"action": "stop"}, timeout=3)
+                except:
+                    pass
+                
+                time.sleep(backoff_time)
                 
         except Exception as e:
-            print(f"[AI Driver] Error in loop: {e}")
-            time.sleep(2.0)
+            err_msg = f"Autopilot Error: {str(e)}"
+            print(f"[AI Driver] {err_msg}")
+            
+            log_entry = {
+                "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "action": "stop",
+                "speed": 0,
+                "steering_angle": 0,
+                "reasoning": err_msg,
+                "speak": "An error occurred.",
+                "latency_ms": 0,
+                "sensors": {}
+            }
+            ai_logs.append(log_entry)
+            if len(ai_logs) > 50:
+                ai_logs.pop(0)
+                
+            try:
+                requests.post(f"{picar_client.BASE_URL}/api/move", json={"action": "stop"}, timeout=3)
+            except:
+                pass
+                
+            time.sleep(5.0)
             
         time.sleep(0.05)
         
