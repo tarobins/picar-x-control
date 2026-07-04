@@ -1009,6 +1009,19 @@ bk 1</textarea>
                 </p>
             </div>
 
+            <div class="control-group" style="margin-bottom: 0.8rem;">
+                <label class="slider-label">Target Search Objective</label>
+                <input type="text" class="range-slider" id="ai-target-objective" placeholder="e.g., red cup, keyboard, human, cat..." value="explore and look around" style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 0.5rem; border-radius: 8px; font-size: 0.85rem; width: 100%; box-sizing: border-box; height: auto;" onchange="updateAiTarget(this.value)">
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.8rem;">
+              <span style="font-size:0.85rem; color:var(--text-muted);">Voice Commentary (TTS)</span>
+              <label class="switch" style="position:relative; display:inline-block; width:44px; height:24px; margin:0;">
+                <input type="checkbox" id="toggle-ai-voice" checked style="opacity:0; width:0; height:0;">
+                <span style="position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background-color:#ff4757; transition:.4s; border-radius:24px;"></span>
+              </label>
+            </div>
+
             <button class="btn-primary" id="btn-toggle-ai" style="background: linear-gradient(135deg, var(--accent-primary), #00b8ff); color: #000; font-weight: 700; width: 100%; margin-bottom: 0.8rem;">
                 Activate AI Autopilot
             </button>
@@ -1230,6 +1243,33 @@ else:
         const savedApiKey = localStorage.getItem('gemini_api_key') || '';
         document.getElementById('ai-api-key').value = savedApiKey;
 
+        // Load saved Gemini target search objective from localStorage
+        const savedTarget = localStorage.getItem('gemini_ai_target') || 'explore and look around';
+        const targetInput = document.getElementById('ai-target-objective');
+        if (targetInput) {
+            targetInput.value = savedTarget;
+        }
+
+        // Global voice commentary tracking
+        let lastSpokenText = "";
+
+        // Update target endpoint function
+        window.updateAiTarget = function(value) {
+            localStorage.setItem('gemini_ai_target', value);
+            fetch('/api/ai_drive/target', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target: value })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    console.log("Updated AI target search objective to:", data.target);
+                }
+            })
+            .catch(err => console.error("Error setting AI target:", err));
+        };
+
         // Toggle AI Autopilot
         const btnToggleAi = document.getElementById('btn-toggle-ai');
         const aiStatusText = document.getElementById('ai-status-text');
@@ -1279,6 +1319,22 @@ else:
                 if (data.status === 'success') {
                     aiActive = data.ai_drive_active;
                     updateAiUI(data.logs, aiActive);
+                    
+                    if (data.logs && data.logs.length > 0) {
+                        const log = data.logs[data.logs.length - 1];
+                        const speakCheckbox = document.getElementById('toggle-ai-voice');
+                        if (log.speak && log.speak !== lastSpokenText && speakCheckbox && speakCheckbox.checked) {
+                            lastSpokenText = log.speak;
+                            try {
+                                const utterance = new SpeechSynthesisUtterance(log.speak);
+                                utterance.rate = 1.0;
+                                window.speechSynthesis.speak(utterance);
+                            } catch (e) {
+                                console.error("Failed to execute TTS speak:", e);
+                            }
+                        }
+                    }
+                    
                     if (!aiActive && aiPollInterval) {
                         clearInterval(aiPollInterval);
                         aiPollInterval = null;
@@ -1291,12 +1347,15 @@ else:
         btnToggleAi.addEventListener('click', () => {
             const nextState = !aiActive;
             const apiKey = document.getElementById('ai-api-key').value.trim();
+            const currentTarget = document.getElementById('ai-target-objective').value.trim();
             
             if (nextState) {
                 // Save key to localStorage
                 localStorage.setItem('gemini_api_key', apiKey);
                 aiStatusText.textContent = "STARTING...";
                 aiStatusDot.style.background = "var(--accent-warning)";
+                // Sync the target to local server before starting
+                updateAiTarget(currentTarget);
             }
             
             fetch('/api/ai_drive/toggle', {

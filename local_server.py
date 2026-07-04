@@ -215,6 +215,7 @@ ai_drive_active = False
 ai_drive_key = ""
 ai_drive_thread = None
 ai_logs = []
+ai_target_objective = "explore and look around"
 
 def ai_driver_loop():
     global ai_drive_active, ai_drive_key, ai_logs
@@ -242,7 +243,11 @@ def ai_driver_loop():
             # 3. Formulate the prompt
             sensor_prompt = (
                 f"You are the high-end autonomous AI driver for the SunFounder PiCar-X robot.\n"
-                f"Your goal is to safely explore the room, avoid obstacles, identify objects, and keep moving.\n"
+                f"Your CURRENT Target Search Objective is: '{ai_target_objective}'\n\n"
+                f"Guidelines for target search:\n"
+                f"- If your target is found, steer towards it and stop when close (under 30cm), then set the speak field to announce 'Objective Complete! Found the [Target Name]!' and stop the car.\n"
+                f"- If the target is NOT visible, use the camera gimbal (gimbal_pan, gimbal_tilt) to look left/right/up/down to search, or drive around to find it.\n"
+                f"- If the target is 'explore and look around', just safely explore the room, avoid obstacles, identify objects, and keep moving.\n\n"
                 f"Current Sensor Data:\n"
                 f"- Ultrasonic Distance: {tel_data.get('distance', -1)} cm\n"
                 f"- Camera Obstacle Distance: {tel_data.get('camera_distance', -1)} cm\n"
@@ -252,7 +257,7 @@ def ai_driver_loop():
                 f"- Current State: {tel_data.get('state', 'IDLE')}\n\n"
                 f"Analyze the camera image and sensor readings, then respond with your driving decision.\n"
                 f"Be smart: if an obstacle is close (under 30cm), turn or reverse. Do not drive into walls.\n"
-                f"Respond in the specified JSON format."
+                f"Provide a fun, commentary-style voice narration in the 'speak' field describing what you see and are doing (e.g. 'I see a wall, backing up now' or 'Searching for the cup')."
             )
             
             api_key = ai_drive_key or os.environ.get("GEMINI_API_KEY", "")
@@ -295,9 +300,12 @@ def ai_driver_loop():
                             },
                             "reasoning": {
                                 "type": "STRING"
+                            },
+                            "speak": {
+                                "type": "STRING"
                             }
                         },
-                        "required": ["action", "speed", "steering_angle", "reasoning"]
+                        "required": ["action", "speed", "steering_angle", "reasoning", "speak"]
                     }
                 }
             }
@@ -318,6 +326,7 @@ def ai_driver_loop():
                 gimbal_pan = decision.get("gimbal_pan")
                 gimbal_tilt = decision.get("gimbal_tilt")
                 reasoning = decision.get("reasoning", "")
+                speak = decision.get("speak", "")
                 
                 # Execute drive
                 move_url = f"{picar_client.BASE_URL}/api/move"
@@ -341,6 +350,7 @@ def ai_driver_loop():
                     "speed": speed,
                     "steering_angle": steering_angle,
                     "reasoning": reasoning,
+                    "speak": speak,
                     "latency_ms": latency,
                     "sensors": {
                         "ultrasonic": tel_data.get('distance', -1),
@@ -397,12 +407,20 @@ def toggle_ai_drive():
         ai_drive_active = False
         return jsonify({"status": "success", "ai_drive_active": False})
 
+@app.route('/api/ai_drive/target', methods=['POST'])
+def set_ai_target():
+    global ai_target_objective
+    data = request.get_json(silent=True) or {}
+    ai_target_objective = data.get("target", "explore and look around").strip()
+    return jsonify({"status": "success", "target": ai_target_objective})
+
 @app.route('/api/ai_drive/status', methods=['GET'])
 def ai_drive_status():
-    global ai_drive_active, ai_logs
+    global ai_drive_active, ai_logs, ai_target_objective
     return jsonify({
         "status": "success",
         "ai_drive_active": ai_drive_active,
+        "target": ai_target_objective,
         "logs": ai_logs
     })
 
