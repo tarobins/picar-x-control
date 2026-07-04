@@ -8,6 +8,8 @@ import time
 import json
 import socket
 import urllib3
+import threading
+import base64
 
 # Optimize TCP connection socket settings (Disable Nagle's algorithm)
 urllib3.connection.HTTPConnection.default_socket_options += [
@@ -84,6 +86,16 @@ def camera_switch():
         r = requests.post(f"{picar_client.BASE_URL}/api/camera_switch", json={"active": activate}, timeout=3)
         if r.status_code == 200:
             return jsonify(r.json())
+    except Exception as e:
+        pass
+    return jsonify({"status": "error", "message": "Robot connection failed"}), 503
+
+@app.route('/api/camera/frame', methods=['GET'])
+def get_camera_frame():
+    try:
+        r = requests.get(f"{picar_client.BASE_URL}/api/camera/frame", timeout=3)
+        if r.status_code == 200:
+            return r.content, 200, {'Content-Type': 'image/jpeg'}
     except Exception as e:
         pass
     return jsonify({"status": "error", "message": "Robot connection failed"}), 503
@@ -198,6 +210,201 @@ def trigger_auto_imu_calibration():
         return jsonify(r.json()), r.status_code
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 503
+
+ai_drive_active = False
+ai_drive_key = ""
+ai_drive_thread = None
+ai_logs = []
+
+def ai_driver_loop():
+    global ai_drive_active, ai_drive_key, ai_logs
+    print("[AI Driver] Started background driving thread.")
+    
+    while ai_drive_active:
+        try:
+            # 1. Grab telemetry
+            telemetry_url = f"{picar_client.BASE_URL}/api/telemetry"
+            r_tel = requests.get(telemetry_url, timeout=3)
+            tel_data = {}
+            if r_tel.status_code == 200:
+                tel_data = r_tel.json().get("telemetry", {})
+            
+            # 2. Grab frame
+            frame_url = f"{picar_client.BASE_URL}/api/camera/frame"
+            r_frame = requests.get(frame_url, timeout=3)
+            if r_frame.status_code != 200:
+                print("[AI Driver] Could not fetch camera frame. Retrying...")
+                time.sleep(1.0)
+                continue
+                
+            frame_b64 = base64.b64encode(r_frame.content).decode('utf-8')
+            
+            # 3. Formulate the prompt
+            sensor_prompt = (
+                f"You are the high-end autonomous AI driver for the SunFounder PiCar-X robot.\n"
+                f"Your goal is to safely explore the room, avoid obstacles, identify objects, and keep moving.\n"
+                f"Current Sensor Data:\n"
+                f"- Ultrasonic Distance: {tel_data.get('distance', -1)} cm\n"
+                f"- Camera Obstacle Distance: {tel_data.get('camera_distance', -1)} cm\n"
+                f"- Grayscale cliff sensors: {tel_data.get('grayscale', [0,0,0])}\n"
+                f"- Battery Voltage: {tel_data.get('battery_voltage', 0.0)}V\n"
+                f"- IMU Acceleration: X={tel_data.get('accel_x', 0)}, Y={tel_data.get('accel_y', 0)}, Z={tel_data.get('accel_z', 0)}\n"
+                f"- Current State: {tel_data.get('state', 'IDLE')}\n\n"
+                f"Analyze the camera image and sensor readings, then respond with your driving decision.\n"
+                f"Be smart: if an obstacle is close (under 30cm), turn or reverse. Do not drive into walls.\n"
+                f"Respond in the specified JSON format."
+            )
+            
+            api_key = ai_drive_key or os.environ.get("GEMINI_API_KEY", "")
+            gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+            
+            payload = {
+                "contents": [
+                    {
+                        "parts": [
+                            {"text": sensor_prompt},
+                            {
+                                "inlineData": {
+                                    "mimeType": "image/jpeg",
+                                    "data": frame_b64
+                                }
+                            }
+                        ]
+                    }
+                ],
+                "generationConfig": {
+                    "responseMimeType": "application/json",
+                    "responseSchema": {
+                        "type": "OBJECT",
+                        "properties": {
+                            "action": {
+                                "type": "STRING",
+                                "enum": ["forward", "backward", "stop", "steer"]
+                            },
+                            "speed": {
+                                "type": "INTEGER"
+                            },
+                            "steering_angle": {
+                                "type": "INTEGER"
+                            },
+                            "gimbal_pan": {
+                                "type": "INTEGER"
+                            },
+                            "gimbal_tilt": {
+                                "type": "INTEGER"
+                            },
+                            "reasoning": {
+                                "type": "STRING"
+                            }
+                        },
+                        "required": ["action", "speed", "steering_angle", "reasoning"]
+                    }
+                }
+            }
+            
+            headers = {"Content-Type": "application/json"}
+            t_start = time.time()
+            resp = requests.post(gemini_url, json=payload, headers=headers, timeout=10)
+            latency = int((time.time() - t_start) * 1000)
+            
+            if resp.status_code == 200:
+                result = resp.json()
+                text_response = result["candidates"][0]["content"]["parts"][0]["text"]
+                decision = json.loads(text_response)
+                
+                action = decision.get("action", "stop")
+                speed = min(80, max(0, decision.get("speed", 0)))
+                steering_angle = min(30, max(-30, decision.get("steering_angle", 0)))
+                gimbal_pan = decision.get("gimbal_pan")
+                gimbal_tilt = decision.get("gimbal_tilt")
+                reasoning = decision.get("reasoning", "")
+                
+                # Execute drive
+                move_url = f"{picar_client.BASE_URL}/api/move"
+                requests.post(move_url, json={
+                    "action": action,
+                    "speed": speed,
+                    "steering_angle": steering_angle
+                }, timeout=3)
+                
+                # Execute camera adjustment
+                if gimbal_pan is not None or gimbal_tilt is not None:
+                    cam_url = f"{picar_client.BASE_URL}/api/camera"
+                    requests.post(cam_url, json={
+                        "pan": gimbal_pan,
+                        "tilt": gimbal_tilt
+                    }, timeout=3)
+                
+                log_entry = {
+                    "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "action": action,
+                    "speed": speed,
+                    "steering_angle": steering_angle,
+                    "reasoning": reasoning,
+                    "latency_ms": latency,
+                    "sensors": {
+                        "ultrasonic": tel_data.get('distance', -1),
+                        "camera_distance": tel_data.get('camera_distance', -1),
+                        "cliff_grayscale": tel_data.get('grayscale', [0,0,0]),
+                        "battery": tel_data.get('battery_voltage', 0.0)
+                    }
+                }
+                
+                # Write to persistent log file
+                ai_log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ai_driver.log')
+                try:
+                    with open(ai_log_path, 'a') as f:
+                        f.write(json.dumps(log_entry) + '\n')
+                except Exception as log_err:
+                    print(f"[AI Driver] Error writing log: {log_err}")
+
+                ai_logs.append(log_entry)
+                if len(ai_logs) > 50:
+                    ai_logs.pop(0)
+            else:
+                print(f"[AI Driver] Gemini API error: {resp.status_code} - {resp.text}")
+                time.sleep(2.0)
+                
+        except Exception as e:
+            print(f"[AI Driver] Error in loop: {e}")
+            time.sleep(2.0)
+            
+        time.sleep(1.0)
+        
+    try:
+        requests.post(f"{picar_client.BASE_URL}/api/move", json={"action": "stop"}, timeout=3)
+    except:
+        pass
+    print("[AI Driver] Stopped background driving thread.")
+
+@app.route('/api/ai_drive/toggle', methods=['POST'])
+def toggle_ai_drive():
+    global ai_drive_active, ai_drive_key, ai_drive_thread
+    data = request.get_json(silent=True) or {}
+    active = data.get("active", False)
+    key = data.get("api_key", "").strip()
+    
+    if active:
+        if not key and not os.environ.get("GEMINI_API_KEY"):
+            return jsonify({"status": "error", "message": "Gemini API Key is required"}), 400
+        ai_drive_key = key
+        ai_drive_active = True
+        if ai_drive_thread is None or not ai_drive_thread.is_alive():
+            ai_drive_thread = threading.Thread(target=ai_driver_loop, daemon=True)
+            ai_drive_thread.start()
+        return jsonify({"status": "success", "ai_drive_active": True})
+    else:
+        ai_drive_active = False
+        return jsonify({"status": "success", "ai_drive_active": False})
+
+@app.route('/api/ai_drive/status', methods=['GET'])
+def ai_drive_status():
+    global ai_drive_active, ai_logs
+    return jsonify({
+        "status": "success",
+        "ai_drive_active": ai_drive_active,
+        "logs": ai_logs
+    })
 
 def daemonize(log_file=None):
     try:

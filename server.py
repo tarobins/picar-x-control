@@ -554,6 +554,21 @@ def camera_switch():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/api/camera/frame', methods=['GET'])
+def get_camera_frame():
+    from vilib import Vilib
+    if Vilib.flask_img is not None:
+        try:
+            img = Vilib.flask_img
+            import cv2
+            success, jpeg = cv2.imencode('.jpg', img, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+            if success:
+                return jpeg.tobytes(), 200, {'Content-Type': 'image/jpeg'}
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "error", "message": "Camera offline"}), 503
+
+
 @app.route('/api/telemetry', methods=['GET'])
 def get_telemetry():
     if not px:

@@ -982,16 +982,53 @@ bk 1</textarea>
                     <span>Focal Pixels:</span>
                     <span id="focal-output" style="color: var(--accent-primary); font-weight: 600;">---</span>
                 </div>
-            </div>
-            
-            <hr style="border-color: rgba(255,255,255,0.1); margin: 0.5rem 0;">
+                  <hr style="border-color: rgba(255,255,255,0.1); margin: 0.5rem 0;">
             <button onclick="commitCalibration()" class="btn-primary" style="background: linear-gradient(135deg, var(--accent-purple), #8a2be2); color: white; width: 100%; font-weight: 700;">
                 Commit & Burn Configurations
             </button>
         </div>
 
+        <!-- COLUMN 7: Gemini AI Smart Driver -->
+        <div class="card" id="ai-driver-card">
+            <div class="card-header">
+                <div class="card-title">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-cpu"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="15" x2="23" y2="15"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="15" x2="4" y2="15"></line></svg>
+                    Gemini AI Autopilot
+                </div>
+                <span id="ai-status-badge" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.75rem; font-weight: 700; display: flex; align-items: center; gap: 0.3rem;">
+                    <span class="status-dot" style="background: #888; width: 6px; height: 6px; border-radius: 50%;"></span>
+                    <span id="ai-status-text">INACTIVE</span>
+                </span>
+            </div>
 
+            <div class="control-group" style="margin-bottom: 0.8rem;">
+                <label class="slider-label">Gemini API Key</label>
+                <input type="password" class="range-slider" id="ai-api-key" placeholder="Enter Gemini API key..." style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 0.5rem; border-radius: 8px; font-size: 0.85rem; width: 100%; box-sizing: border-box; height: auto;">
+                <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.2rem; margin-bottom: 0.5rem;">
+                    *Requires a key to access gemini-2.5-flash. Key is kept safe on your local machine.*
+                </p>
+            </div>
 
+            <button class="btn-primary" id="btn-toggle-ai" style="background: linear-gradient(135deg, var(--accent-primary), #00b8ff); color: #000; font-weight: 700; width: 100%; margin-bottom: 0.8rem;">
+                Activate AI Autopilot
+            </button>
+
+            <div style="border: 1px solid rgba(255,255,255,0.05); background: rgba(0,0,0,0.15); border-radius: 8px; padding: 0.8rem; font-size: 0.85rem; min-height: 120px; max-height: 180px; overflow-y: auto;">
+                <div style="font-weight: 600; color: var(--accent-primary); margin-bottom: 0.3rem;">AI Thoughts:</div>
+                <div id="ai-reasoning" style="color: var(--text-muted); font-style: italic; font-size: 0.8rem;">Autopilot not activated. Enter API key and click activate to begin visual exploration.</div>
+                
+                <hr style="border-color: rgba(255,255,255,0.05); margin: 0.5rem 0;">
+                
+                <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted);">
+                    <span>Last Action:</span>
+                    <span id="ai-action" style="font-weight: 600; color: #fff;">STOP (0, 0°)</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">
+                    <span>Model Latency:</span>
+                    <span id="ai-latency" style="font-weight: 600; color: #fff;">---</span>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -1009,6 +1046,8 @@ bk 1</textarea>
         let activeKeys = new Set();
         let cameraActive = true;
         let lastMoveRequest = 0;
+        let aiActive = false;
+        let aiPollInterval = null;
 
         // Elements
         const imgStream = document.getElementById('mjpg-stream');
@@ -1186,6 +1225,112 @@ else:
             })
             .catch(err => console.error("Error switching IMU:", err));
         }
+
+        // Load saved Gemini API Key from localStorage
+        const savedApiKey = localStorage.getItem('gemini_api_key') || '';
+        document.getElementById('ai-api-key').value = savedApiKey;
+
+        // Toggle AI Autopilot
+        const btnToggleAi = document.getElementById('btn-toggle-ai');
+        const aiStatusText = document.getElementById('ai-status-text');
+        const aiStatusBadge = document.getElementById('ai-status-badge');
+        const aiStatusDot = aiStatusBadge.querySelector('.status-dot');
+        const aiReasoning = document.getElementById('ai-reasoning');
+        const aiAction = document.getElementById('ai-action');
+        const aiLatency = document.getElementById('ai-latency');
+
+        function updateAiUI(logs, active) {
+            if (active) {
+                aiStatusText.textContent = "ACTIVE";
+                aiStatusDot.style.background = "#2ed573";
+                aiStatusBadge.style.color = "#2ed573";
+                aiStatusBadge.style.borderColor = "#2ed573";
+                btnToggleAi.textContent = "Deactivate AI Autopilot";
+                btnToggleAi.style.background = "linear-gradient(135deg, var(--accent-danger), #ff4757)";
+                btnToggleAi.style.color = "#fff";
+                
+                if (logs && logs.length > 0) {
+                    const log = logs[logs.length - 1];
+                    aiReasoning.textContent = log.reasoning;
+                    aiAction.textContent = `${log.action.toUpperCase()} (Speed: ${log.speed}, Steer: ${log.steering_angle}°)`;
+                    aiLatency.textContent = `${log.latency_ms} ms`;
+                } else {
+                    aiReasoning.textContent = "Autopilot active. Thinking... waiting for first visual command.";
+                }
+            } else {
+                aiStatusText.textContent = "INACTIVE";
+                aiStatusDot.style.background = "#888";
+                aiStatusBadge.style.color = "var(--text-main)";
+                aiStatusBadge.style.borderColor = "rgba(255, 255, 255, 0.1)";
+                btnToggleAi.textContent = "Activate AI Autopilot";
+                btnToggleAi.style.background = "linear-gradient(135deg, var(--accent-primary), #00b8ff)";
+                btnToggleAi.style.color = "#000";
+                
+                aiReasoning.textContent = "Autopilot not activated. Enter API key and click activate to begin visual exploration.";
+                aiAction.textContent = "STOP (0, 0°)";
+                aiLatency.textContent = "---";
+            }
+        }
+
+        function pollAiStatus() {
+            fetch('/api/ai_drive/status')
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    aiActive = data.ai_drive_active;
+                    updateAiUI(data.logs, aiActive);
+                    if (!aiActive && aiPollInterval) {
+                        clearInterval(aiPollInterval);
+                        aiPollInterval = null;
+                    }
+                }
+            })
+            .catch(err => console.error("Error polling AI status:", err));
+        }
+
+        btnToggleAi.addEventListener('click', () => {
+            const nextState = !aiActive;
+            const apiKey = document.getElementById('ai-api-key').value.trim();
+            
+            if (nextState) {
+                // Save key to localStorage
+                localStorage.setItem('gemini_api_key', apiKey);
+                aiStatusText.textContent = "STARTING...";
+                aiStatusDot.style.background = "var(--accent-warning)";
+            }
+            
+            fetch('/api/ai_drive/toggle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ active: nextState, api_key: apiKey })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    aiActive = data.ai_drive_active;
+                    if (aiActive) {
+                        updateAiUI([], true);
+                        if (!aiPollInterval) {
+                            aiPollInterval = setInterval(pollAiStatus, 1000);
+                        }
+                    } else {
+                        updateAiUI([], false);
+                        if (aiPollInterval) {
+                            clearInterval(aiPollInterval);
+                            aiPollInterval = null;
+                        }
+                    }
+                } else {
+                    alert("Autopilot activation failed: " + data.message);
+                    updateAiUI([], false);
+                }
+            })
+            .catch(err => {
+                console.error("Error toggling AI drive:", err);
+                alert("Network error: Could not contact autopilot driver server.");
+                updateAiUI([], false);
+            });
+        });
 
         // Toggle Camera
         toggleCameraBtn.addEventListener('click', () => {
