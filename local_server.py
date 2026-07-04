@@ -423,25 +423,27 @@ def ai_driver_loop():
             frame_b64 = base64.b64encode(r_frame.content).decode('utf-8')
             
             # 3. Formulate the prompt
+            is_collision_active = tel_data.get('collision_active', False)
             sensor_prompt = (
                 f"You are the high-end autonomous AI driver for the SunFounder PiCar-X robot.\n"
-                f"Your CURRENT Target Search Objective is: '{ai_target_objective}'\n\n"
-                f"Guidelines for target search:\n"
-                f"- If your target is found, steer towards it and stop when close (under 30cm), then set the speak field to announce 'Objective Complete! Found the [Target Name]!' and stop the car.\n"
-                f"- If the target is NOT visible, use the camera gimbal (gimbal_pan, gimbal_tilt) to look left/right/up/down to search, or drive around to find it.\n"
-                f"- If the target is 'explore and look around', just safely explore the room, avoid obstacles, identify objects, and keep moving.\n\n"
-                f"Your Recent Driving Actions (Use this to avoid getting stuck in loops):\n"
+                f"Objective: '{ai_target_objective}'\n\n"
+                f"Driving Logic:\n"
+                f"- If target found: steer towards it, stop under 30cm, set speak to announce completion, stop.\n"
+                f"- If target not visible: pan/tilt camera (gimbal_pan, gimbal_tilt) to scan, or drive to search.\n"
+                f"- If 'explore': safely avoid obstacles and keep moving.\n\n"
+                f"Safety Instructions (CRITICAL):\n"
+                f"- Collision Active is {is_collision_active}. If true, a safety lock is active. You MUST stop ('stop') or reverse ('backward') to clear the lock! Do NOT drive forward or steer until cleared.\n"
+                f"- If ultrasonic or camera distance is < 30cm, you are blocked! Immediately stop, steer away, or reverse.\n\n"
+                f"History:\n"
                 f"{json.dumps(ai_decision_memory, indent=2)}\n\n"
-                f"Current Sensor Data:\n"
-                f"- Ultrasonic Distance: {tel_data.get('distance', -1)} cm\n"
-                f"- Camera Obstacle Distance: {tel_data.get('camera_distance', -1)} cm\n"
-                f"- Grayscale cliff sensors: {tel_data.get('grayscale', [0,0,0])}\n"
-                f"- Battery Voltage: {tel_data.get('battery_voltage', 0.0)}V\n"
-                f"- IMU Acceleration: X={tel_data.get('accel_x', 0)}, Y={tel_data.get('accel_y', 0)}, Z={tel_data.get('accel_z', 0)}\n"
-                f"- Current State: {tel_data.get('state', 'IDLE')}\n\n"
-                f"Analyze the camera image and sensor readings, then respond with your driving decision.\n"
-                f"Be smart: if an obstacle is close (under 30cm), turn or reverse. Do not drive into walls.\n"
-                f"Provide a fun, commentary-style voice narration in the 'speak' field describing what you see and are doing (e.g. 'I see a wall, backing up now' or 'Searching for the cup')."
+                f"Sensors:\n"
+                f"- Collision Active: {is_collision_active}\n"
+                f"- Ultrasonic: {tel_data.get('distance', -1)} cm\n"
+                f"- Camera distance: {tel_data.get('camera_distance', -1)} cm\n"
+                f"- Grayscale: {tel_data.get('grayscale', [0,0,0])}\n"
+                f"- Battery: {tel_data.get('battery_voltage', 0.0)}V\n"
+                f"- Accel: X={tel_data.get('accel_x', 0)}, Y={tel_data.get('accel_y', 0)}\n\n"
+                f"LATENCY OPTIMIZATION: Keep 'reasoning' under 12 words. Keep 'speak' under 8 words. Brevity is critical for fast turns!"
             )
             
             api_key = ai_drive_key or os.environ.get("GEMINI_API_KEY", "")
@@ -463,6 +465,7 @@ def ai_driver_loop():
                 ],
                 "generationConfig": {
                     "responseMimeType": "application/json",
+                    "maxOutputTokens": 150,
                     "responseSchema": {
                         "type": "OBJECT",
                         "properties": {
@@ -574,7 +577,7 @@ def ai_driver_loop():
             print(f"[AI Driver] Error in loop: {e}")
             time.sleep(2.0)
             
-        time.sleep(1.0)
+        time.sleep(0.05)
         
     try:
         requests.post(f"{picar_client.BASE_URL}/api/move", json={"action": "stop"}, timeout=3)
