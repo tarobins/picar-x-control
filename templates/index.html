@@ -1061,6 +1061,7 @@ bk 1</textarea>
         let lastMoveRequest = 0;
         let aiActive = false;
         let aiPollInterval = null;
+        let simulationMode = false;
 
         // Elements
         const imgStream = document.getElementById('mjpg-stream');
@@ -1319,6 +1320,10 @@ else:
                 if (data.status === 'success') {
                     aiActive = data.ai_drive_active;
                     updateAiUI(data.logs, aiActive);
+                    
+                    if (aiActive && simulationMode) {
+                        imgStream.src = "/api/camera/frame?t=" + new Date().getTime();
+                    }
                     
                     if (data.logs && data.logs.length > 0) {
                         const log = data.logs[data.logs.length - 1];
@@ -1656,6 +1661,10 @@ else:
                 const tClientReceived = Date.now();
                 logTrace(requestId, 'move', stateToSend, data, tClientSent, tClientReceived);
 
+                if (simulationMode) {
+                    imgStream.src = "/api/camera/frame?t=" + new Date().getTime();
+                }
+
                 if (data.telemetry) {
                     updateTelemetryUI(data.telemetry);
                 }
@@ -1910,6 +1919,10 @@ else:
                 clearTimeout(timeoutId);
                 const tClientReceived = Date.now();
                 logTrace(requestId, 'camera', stateToSend, data, tClientSent, tClientReceived);
+
+                if (simulationMode) {
+                    imgStream.src = "/api/camera/frame?t=" + new Date().getTime();
+                }
                 
                 if (data.telemetry) {
                     updateTelemetryUI(data.telemetry);
@@ -2149,10 +2162,23 @@ else:
             .then(data => {
                 if (data.status === 'success') {
                     // Connection Status
-                    connBadge.querySelector('span').textContent = "Connected";
-                    connBadge.style.color = "var(--accent-success)";
-                    connBadge.style.borderColor = "var(--accent-success)";
-                    connBadge.querySelector('.status-dot').style.background = "var(--accent-success)";
+                    if (data.simulation_mode) {
+                        simulationMode = true;
+                        connBadge.querySelector('span').textContent = "Simulation Mode";
+                        connBadge.style.color = "var(--accent-primary)";
+                        connBadge.style.borderColor = "var(--accent-primary)";
+                        connBadge.querySelector('.status-dot').style.background = "var(--accent-primary)";
+                        
+                        imgStream.src = "/api/camera/frame?t=" + new Date().getTime();
+                        imgStream.style.display = 'block';
+                        imgPlaceholder.style.display = 'none';
+                    } else {
+                        simulationMode = false;
+                        connBadge.querySelector('span').textContent = "Connected";
+                        connBadge.style.color = "var(--accent-success)";
+                        connBadge.style.borderColor = "var(--accent-success)";
+                        connBadge.querySelector('.status-dot').style.background = "var(--accent-success)";
+                    }
 
                     updateTelemetryUI(data.telemetry);
 
@@ -2191,6 +2217,16 @@ else:
             .then(data => {
                 if (data.status === 'success') {
                     const st = data.state;
+                    if (st.simulation_mode) {
+                        simulationMode = true;
+                        connBadge.querySelector('span').textContent = "Simulation Mode";
+                        connBadge.style.color = "var(--accent-primary)";
+                        connBadge.style.borderColor = "var(--accent-primary)";
+                        connBadge.querySelector('.status-dot').style.background = "var(--accent-primary)";
+                    } else {
+                        simulationMode = false;
+                    }
+
                     speed = st.speed || 50;
                     speedSlider.value = speed;
                     speedVal.textContent = speed;

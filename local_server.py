@@ -16,6 +16,114 @@ urllib3.connection.HTTPConnection.default_socket_options += [
     (socket.SOL_TCP, socket.TCP_NODELAY, 1)
 ]
 
+# Simulation Engine Variables
+sim_x = 100.0  # Center of 200x200 arena
+sim_y = 150.0
+sim_heading = -90.0  # Pointing North
+sim_pan = 0
+sim_tilt = 0
+
+sim_target_x = 150.0
+sim_target_y = 50.0
+
+sim_obstacles = [
+    {"type": "circle", "cx": 60, "cy": 100, "r": 20},
+    {"type": "box", "x1": 120, "y1": 110, "x2": 150, "y2": 140},
+    {"type": "box", "x1": 30, "y1": 40, "x2": 80, "y2": 60}
+]
+
+def cast_simulation_ray(x, y, heading, pan):
+    import math
+    angle = math.radians(heading + pan)
+    for d in range(1, 250):
+        rx = x + d * math.cos(angle)
+        ry = y + d * math.sin(angle)
+        if rx <= 0 or rx >= 200 or ry <= 0 or ry >= 200:
+            return float(d)
+        for obs in sim_obstacles:
+            if obs["type"] == "circle":
+                dx = rx - obs["cx"]
+                dy = ry - obs["cy"]
+                if dx*dx + dy*dy <= obs["r"]*obs["r"]:
+                    return float(d)
+            elif obs["type"] == "box":
+                if obs["x1"] <= rx <= obs["x2"] and obs["y1"] <= ry <= obs["y2"]:
+                    return float(d)
+    return 250.0
+
+def generate_simulation_frame(x, y, heading, pan, target_x, target_y, target_name):
+    from PIL import Image, ImageDraw
+    import math
+    
+    img = Image.new("RGB", (320, 240), "#1e1e24")
+    draw = ImageDraw.Draw(img)
+    
+    ox, oy = 10, 20
+    
+    # Draw Arena boundary
+    draw.rectangle([ox, oy, ox + 200, oy + 200], outline="#ffffff", width=2)
+    
+    # Draw Obstacles
+    for obs in sim_obstacles:
+        if obs["type"] == "circle":
+            cx, cy, r = obs["cx"], obs["cy"], obs["r"]
+            draw.ellipse([ox + cx - r, oy + cy - r, ox + cx + r, oy + cy + r], fill="#ff4757", outline="#ff6b81")
+        elif obs["type"] == "box":
+            draw.rectangle([ox + obs["x1"], oy + obs["y1"], ox + obs["x2"], oy + obs["y2"]], fill="#ff4757", outline="#ff6b81")
+            
+    # Draw Target
+    tx, ty = target_x, target_y
+    draw.ellipse([ox + tx - 6, oy + ty - 6, ox + tx + 6, oy + ty + 6], fill="#ffa502", outline="#ff7f50")
+    draw.text((ox + tx + 8, oy + ty - 8), target_name.upper(), fill="#ffa502")
+    
+    # Draw Robot
+    rad = math.radians(heading)
+    size = 8
+    p1 = (ox + x + size * math.cos(rad), oy + y + size * math.sin(rad))
+    p2 = (ox + x + size * math.cos(rad + 2.5), oy + y + size * math.sin(rad + 2.5))
+    p3 = (ox + x + size * math.cos(rad - 2.5), oy + y + size * math.sin(rad - 2.5))
+    draw.polygon([p1, p2, p3], fill="#1e90ff", outline="#70a1ff")
+    
+    # Raycast
+    ray_dist = cast_simulation_ray(x, y, heading, pan)
+    ray_angle = math.radians(heading + pan)
+    rx = x + ray_dist * math.cos(ray_angle)
+    ry = y + ray_dist * math.sin(ray_angle)
+    draw.line([ox + x, oy + y, ox + rx, oy + ry], fill="#2ed573", width=1)
+    
+    # Text Panel
+    draw.text((220, 20), "SIM AUTOPILOT", fill="#2ed573")
+    draw.text((220, 40), "MODE: ACTIVE", fill="#888888")
+    draw.text((220, 65), f"Robot X: {x:.1f}", fill="#ffffff")
+    draw.text((220, 80), f"Robot Y: {y:.1f}", fill="#ffffff")
+    draw.text((220, 95), f"Heading: {heading:.0f} deg", fill="#ffffff")
+    draw.text((220, 115), f"Target: {target_name.upper()}", fill="#ffa502")
+    draw.text((220, 130), f"Dist: {ray_dist:.1f} cm", fill="#2ed573")
+    draw.text((220, 150), f"Gimbal P: {pan}", fill="#1e90ff")
+    
+    import io
+    output_bytes = io.BytesIO()
+    img.save(output_bytes, format='JPEG')
+    return output_bytes.getvalue()
+
+def update_sim_coordinates(action, speed, steering_angle):
+    global sim_x, sim_y, sim_heading
+    import math
+    dt = 0.5
+    if action == "forward":
+        rad = math.radians(sim_heading)
+        sim_x += (speed * 0.15 * dt) * math.cos(rad)
+        sim_y += (speed * 0.15 * dt) * math.sin(rad)
+    elif action == "backward":
+        rad = math.radians(sim_heading)
+        sim_x -= (speed * 0.15 * dt) * math.cos(rad)
+        sim_y -= (speed * 0.15 * dt) * math.sin(rad)
+        
+    if action in ("forward", "backward"):
+        direction_multiplier = 1 if action == "forward" else -1
+        sim_heading += steering_angle * 0.25 * direction_multiplier * dt
+        sim_heading = (sim_heading + 180) % 360 - 180
+
 app = Flask(__name__, template_folder='templates')
 
 @app.route('/')
@@ -24,10 +132,24 @@ def index():
 
 @app.route('/api/status', methods=['GET'])
 def get_status():
-    status = picar_client.get_status()
-    if status:
-        return jsonify(status)
-    return jsonify({"status": "error", "message": "Robot connection failed"}), 503
+    global sim_pan, sim_tilt
+    try:
+        status = picar_client.get_status()
+        if status:
+            return jsonify(status)
+    except:
+        pass
+    return jsonify({
+        "status": "success",
+        "state": {
+            "speed": 0,
+            "steering_angle": 0,
+            "pan_angle": sim_pan,
+            "tilt_angle": sim_tilt,
+            "camera_active": True,
+            "simulation_mode": True
+        }
+    })
 
 @app.route('/api/move', methods=['POST'])
 def move_car():
@@ -37,34 +159,61 @@ def move_car():
     speed = data.get("speed", 50)
     steering_angle = data.get("steering_angle", 0)
     
-    t_sent = time.time() * 1000.0
-    res = picar_client.move(action, speed, steering_angle)
-    t_back = time.time() * 1000.0
-    
-    if res and isinstance(res, dict):
-        res["t_proxy_received"] = t_recv
-        res["t_proxy_sent"] = t_sent
-        res["t_proxy_back"] = t_back
-        return jsonify(res)
-    return jsonify({"status": "error", "message": "Robot connection failed"}), 503
+    try:
+        t_sent = time.time() * 1000.0
+        res = picar_client.move(action, speed, steering_angle)
+        t_back = time.time() * 1000.0
+        if res and isinstance(res, dict):
+            res["t_proxy_received"] = t_recv
+            res["t_proxy_sent"] = t_sent
+            res["t_proxy_back"] = t_back
+            return jsonify(res)
+    except:
+        pass
+        
+    update_sim_coordinates(action, speed, steering_angle)
+    return jsonify({
+        "status": "success",
+        "state": {
+            "speed": speed,
+            "steering_angle": steering_angle,
+            "pan_angle": sim_pan,
+            "tilt_angle": sim_tilt,
+            "camera_active": True,
+            "simulation_mode": True
+        }
+    })
 
 @app.route('/api/camera', methods=['POST'])
 def control_camera():
+    global sim_pan, sim_tilt
     t_recv = time.time() * 1000.0
     data = request.get_json(silent=True) or {}
     pan = data.get("pan")
     tilt = data.get("tilt")
     
-    t_sent = time.time() * 1000.0
-    res = picar_client.set_camera(pan, tilt)
-    t_back = time.time() * 1000.0
-    
-    if res and isinstance(res, dict):
-        res["t_proxy_received"] = t_recv
-        res["t_proxy_sent"] = t_sent
-        res["t_proxy_back"] = t_back
-        return jsonify(res)
-    return jsonify({"status": "error", "message": "Robot connection failed"}), 503
+    try:
+        t_sent = time.time() * 1000.0
+        res = picar_client.set_camera(pan, tilt)
+        t_back = time.time() * 1000.0
+        if res and isinstance(res, dict):
+            res["t_proxy_received"] = t_recv
+            res["t_proxy_sent"] = t_sent
+            res["t_proxy_back"] = t_back
+            return jsonify(res)
+    except:
+        pass
+        
+    if pan is not None:
+        sim_pan = int(pan)
+    if tilt is not None:
+        sim_tilt = int(tilt)
+    return jsonify({
+        "status": "success",
+        "pan": sim_pan,
+        "tilt": sim_tilt,
+        "simulation_mode": True
+    })
 
 @app.route('/api/trace', methods=['POST'])
 def log_trace():
@@ -88,7 +237,7 @@ def camera_switch():
             return jsonify(r.json())
     except Exception as e:
         pass
-    return jsonify({"status": "error", "message": "Robot connection failed"}), 503
+    return jsonify({"status": "success", "camera_active": activate, "simulation_mode": True})
 
 @app.route('/api/camera/frame', methods=['GET'])
 def get_camera_frame():
@@ -98,7 +247,12 @@ def get_camera_frame():
             return r.content, 200, {'Content-Type': 'image/jpeg'}
     except Exception as e:
         pass
-    return jsonify({"status": "error", "message": "Robot connection failed"}), 503
+        
+    try:
+        frame_data = generate_simulation_frame(sim_x, sim_y, sim_heading, sim_pan, sim_target_x, sim_target_y, ai_target_objective)
+        return frame_data, 200, {'Content-Type': 'image/jpeg'}
+    except Exception as err:
+        return jsonify({"status": "error", "message": "Simulation frame generation failed: " + str(err)}), 500
 
 @app.route('/api/imu_switch', methods=['POST'])
 def imu_switch():
@@ -110,7 +264,7 @@ def imu_switch():
             return jsonify(r.json())
     except Exception as e:
         pass
-    return jsonify({"status": "error", "message": "Robot connection failed"}), 503
+    return jsonify({"status": "success", "imu_enabled": activate, "simulation_mode": True})
 
 @app.route('/api/telemetry', methods=['GET'])
 def get_telemetry():
@@ -118,7 +272,34 @@ def get_telemetry():
         r = requests.get(f"{picar_client.BASE_URL}/api/telemetry", timeout=3)
         return jsonify(r.json()), r.status_code
     except Exception as e:
-        return jsonify({"status": "error", "message": "Robot connection failed: " + str(e)}), 503
+        pass
+        
+    ray_dist = cast_simulation_ray(sim_x, sim_y, sim_heading, sim_pan)
+    return jsonify({
+        "status": "success",
+        "accel_x": 0.0,
+        "accel_y": 0.0,
+        "accel_z": 9.81,
+        "imu_enabled": True,
+        "state": "IDLE",
+        "collision_active": False,
+        "telemetry": {
+            "distance": ray_dist,
+            "camera_distance": ray_dist + 5.0,
+            "grayscale": [1200, 1200, 1200],
+            "battery_voltage": 7.8,
+            "stall_triggered": False,
+            "cpu_temp": 42,
+            "cpu_usage": 15,
+            "memory_usage": 32,
+            "accel_x": 0.0,
+            "accel_y": 0.0,
+            "accel_z": 9.81,
+            "state": "IDLE",
+            "collision_active": False,
+            "logs": [{"time": time.strftime("%H:%M:%S"), "message": "Autopilot running in simulator mode", "level": "info"}]
+        }
+    })
 
 @app.route('/api/execute', methods=['POST'])
 def execute_code():
@@ -216,9 +397,10 @@ ai_drive_key = ""
 ai_drive_thread = None
 ai_logs = []
 ai_target_objective = "explore and look around"
+ai_decision_memory = []
 
 def ai_driver_loop():
-    global ai_drive_active, ai_drive_key, ai_logs
+    global ai_drive_active, ai_drive_key, ai_logs, ai_decision_memory
     print("[AI Driver] Started background driving thread.")
     
     while ai_drive_active:
@@ -248,6 +430,8 @@ def ai_driver_loop():
                 f"- If your target is found, steer towards it and stop when close (under 30cm), then set the speak field to announce 'Objective Complete! Found the [Target Name]!' and stop the car.\n"
                 f"- If the target is NOT visible, use the camera gimbal (gimbal_pan, gimbal_tilt) to look left/right/up/down to search, or drive around to find it.\n"
                 f"- If the target is 'explore and look around', just safely explore the room, avoid obstacles, identify objects, and keep moving.\n\n"
+                f"Your Recent Driving Actions (Use this to avoid getting stuck in loops):\n"
+                f"{json.dumps(ai_decision_memory, indent=2)}\n\n"
                 f"Current Sensor Data:\n"
                 f"- Ultrasonic Distance: {tel_data.get('distance', -1)} cm\n"
                 f"- Camera Obstacle Distance: {tel_data.get('camera_distance', -1)} cm\n"
@@ -327,6 +511,17 @@ def ai_driver_loop():
                 gimbal_tilt = decision.get("gimbal_tilt")
                 reasoning = decision.get("reasoning", "")
                 speak = decision.get("speak", "")
+                
+                # Append to decision memory
+                ai_decision_memory.append({
+                    "time": time.strftime("%H:%M:%S"),
+                    "action": action,
+                    "speed": speed,
+                    "steering_angle": steering_angle,
+                    "reasoning": reasoning
+                })
+                if len(ai_decision_memory) > 5:
+                    ai_decision_memory.pop(0)
                 
                 # Execute drive
                 move_url = f"{picar_client.BASE_URL}/api/move"
